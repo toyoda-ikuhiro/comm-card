@@ -598,7 +598,7 @@ $('#btnSaveCats').onclick=()=>{
 };
 
 /* ---------- settings dialog ---------- */
-function fillVoices(){ const sel=$('#sVoice'); const vs=jaVoices(); sel.innerHTML=`<option value="">おまかせ（端末の標準の声）</option>`+vs.map(v=>`<option value="${esc(v.name)}"${v.name===S.voice?' selected':''}>${esc(v.name)}</option>`).join(''); }
+function fillVoices(){ if(!S) return; const sel=$('#sVoice'); const vs=jaVoices(); sel.innerHTML=`<option value="">おまかせ（端末の標準の声）</option>`+vs.map(v=>`<option value="${esc(v.name)}"${v.name===S.voice?' selected':''}>${esc(v.name)}</option>`).join(''); }
 if('speechSynthesis' in window){ speechSynthesis.onvoiceschanged=fillVoices; }
 $('#btnSettings').onclick=()=>{
   fillVoices(); $('#sRate').value=S.rate; $('#sPitch').value=S.pitch; $('#sRateV').textContent=S.rate; $('#sPitchV').textContent=S.pitch;
