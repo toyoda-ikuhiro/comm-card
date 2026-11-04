@@ -1,7 +1,7 @@
 // オフライン用：一度開いたら、ネットにつながっていなくても開けるようにする。
 // ネットにつながっているときは毎回最新版を使い（3秒以内に届かなければ保存してある版）、
 // つながっていないときは保存してある版を使う。
-const CACHE = 'comm-card-mw2oqsvb';
+const CACHE = 'comm-card-mw2p80ua';
 const FILES = ['./', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
