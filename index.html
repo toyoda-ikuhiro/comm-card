@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="カード">
+<meta name="theme-color" content="#ffffff">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>コミュニケーションカード</title>
+<style>
+:root{
+  --bg:#f3f5fa; --fg:#222; --acc:#2b6cb0; --acc2:#e8f0fb; --line:#d9dfea;
+  --card-min:150px; --pic:64px; --lbl:20px; --chip:18px;
+}
+body[data-size="S"]{ --card-min:110px; --pic:44px; --lbl:15px; --chip:16px; }
+body[data-size="L"]{ --card-min:215px; --pic:100px; --lbl:27px; --chip:21px; }
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{ height:100%; margin:0; overscroll-behavior:none; }
+body{ height:100dvh; -webkit-touch-callout:none; -webkit-text-size-adjust:100%;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+input,textarea,select{ -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
+main{ -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+body{
+  font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","BIZ UDPGothic","Yu Gothic UI","Meiryo",sans-serif;
+  background:var(--bg); color:var(--fg);
+  display:flex; flex-direction:column; overflow:hidden;
+  touch-action:manipulation; user-select:none; -webkit-user-select:none;
+}
+button{ font-family:inherit; cursor:pointer; }
+img{ -webkit-user-drag:none; pointer-events:none; }
+
+/* ---------- header / sentence strip ---------- */
+header{ display:flex; align-items:center; gap:8px; padding:8px 10px; background:#fff; border-bottom:2px solid var(--line); flex:0 0 auto; }
+header[hidden]{ display:none; }
+.strip{ flex:1; display:flex; gap:6px; overflow-x:auto; min-height:80px; background:#eef2f9; border-radius:14px; padding:6px; align-items:center; scrollbar-width:thin; }
+.strip .ph{ color:#9aa4b8; font-size:16px; padding-left:8px; }
+.strip .it{ flex:0 0 auto; width:68px; height:68px; border-radius:10px; background:var(--c,#fff); border:2px solid #0001; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; }
+.strip .it .pic{ font-size:30px; line-height:1; }
+.strip .it img{ width:34px; height:34px; object-fit:contain; }
+.strip .it .lbl{ font-size:11px; font-weight:700; line-height:1; max-width:64px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.strip .it.on{ box-shadow:0 0 0 4px var(--acc); }
+.stripBtns{ display:flex; gap:6px; flex:0 0 auto; }
+.bigbtn{ font-size:18px; font-weight:800; padding:10px 14px; border-radius:14px; border:3px solid var(--line); background:#fff; min-height:64px; min-width:64px; }
+.bigbtn.pri{ background:var(--acc); color:#fff; border-color:var(--acc); font-size:22px; }
+.bigbtn:active{ transform:scale(.95); }
+#btnGear{ font-size:26px; width:54px; height:54px; border-radius:50%; border:2px solid var(--line); background:#fff; color:#889; flex:0 0 auto; position:relative; overflow:hidden; }
+#btnGear.hold{ background:var(--acc); color:#fff; transition:background var(--hold,1.2s) linear; }
+#btnGear[hidden]{ display:none; }
+.strip{ min-width:0; }
+@media (max-width:600px){
+  header{ flex-wrap:wrap; }
+  .strip{ flex:1 1 100%; order:0; min-height:76px; }
+  .stripBtns{ order:1; flex:1; }
+  .stripBtns .bigbtn{ min-height:54px; }
+  .stripBtns .bigbtn.pri{ flex:1; }
+  #btnGear{ order:2; }
+}
+
+/* ---------- edit bar ---------- */
+#editBar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 10px; background:#fff3c4; border-bottom:2px solid #f1d27a; flex:0 0 auto; }
+#editBar[hidden]{ display:none; }
+#editBar .ttl{ font-weight:800; font-size:18px; margin-right:auto; }
+.btn{ font-size:17px; font-weight:700; padding:9px 14px; border-radius:12px; border:2px solid #cfd6e4; background:#fff; min-height:44px; }
+.btn.pri{ background:var(--acc); color:#fff; border-color:var(--acc); }
+.btn.danger{ background:#fff0f0; color:#b00020; border-color:#f0b4b4; }
+.btn.sm{ font-size:15px; padding:6px 10px; min-height:36px; }
+.btn:active{ transform:scale(.96); }
+.btn:disabled{ opacity:.45; }
+
+/* ---------- categories ---------- */
+nav{ display:flex; gap:8px; padding:8px 10px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--line); flex:0 0 auto; scrollbar-width:thin; }
+nav .chip{ flex:0 0 auto; display:flex; align-items:center; gap:6px; padding:8px 16px; border-radius:999px; font-size:var(--chip); font-weight:800; background:var(--c,#eee); border:3px solid transparent; color:#333; min-height:50px; }
+nav .chip .em{ font-size:1.4em; line-height:1; }
+nav .chip.sel{ border-color:#333; box-shadow:0 2px 0 #0002; }
+nav .chip:active{ transform:scale(.96); }
+
+/* ---------- card grid ---------- */
+main{ flex:1; overflow:auto; padding:10px; display:grid; grid-template-columns:repeat(auto-fill,minmax(var(--card-min),1fr)); gap:10px; align-content:start; }
+.card{
+  position:relative; aspect-ratio:1/1.05; border-radius:18px; border:3px solid #0000001a; background:var(--c,#fff);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:8px;
+  cursor:pointer; box-shadow:0 2px 4px #0001; outline:none;
+}
+.card:active{ transform:scale(.94); }
+.card.on{ box-shadow:0 0 0 6px var(--acc); border-color:var(--acc); }
+.card .pic{ font-size:var(--pic); line-height:1.1; display:flex; align-items:center; justify-content:center; height:58%; width:100%; }
+.card .pic img{ max-width:88%; max-height:100%; object-fit:contain; border-radius:8px; }
+.card .lbl{ font-size:var(--lbl); font-weight:800; text-align:center; line-height:1.15; overflow-wrap:anywhere; max-height:2.4em; overflow:hidden; }
+body[data-text="0"] .card .lbl{ display:none; }
+body[data-text="0"] .card .pic{ height:85%; }
+.card.hidden{ opacity:.4; }
+.card .badge{ position:absolute; top:6px; left:8px; font-size:12px; background:#333; color:#fff; border-radius:8px; padding:2px 6px; }
+.card .mv{ position:absolute; bottom:4px; left:4px; right:4px; display:flex; justify-content:space-between; }
+.card .mv button{ width:40px; height:36px; border-radius:10px; border:2px solid #0002; background:#fff; font-size:16px; }
+.card .pen{ position:absolute; top:6px; right:6px; width:34px; height:34px; border-radius:50%; background:#fff; border:2px solid #0002; display:flex; align-items:center; justify-content:center; font-size:16px; }
+.card.add{ border:3px dashed #9aa4b8; background:#fff; color:#667; }
+.card.add .pic{ font-size:calc(var(--pic) * .8); }
+.empty{ grid-column:1/-1; color:#889; font-size:18px; padding:30px; text-align:center; }
+
+/* ---------- dialogs ---------- */
+dialog{ border:none; border-radius:18px; padding:0; width:min(600px,95vw); max-height:92vh; box-shadow:0 10px 40px #0004; }
+dialog::backdrop{ background:#0005; }
+.dlg{ padding:18px; overflow:auto; max-height:92vh; }
+.dlg h2{ margin:0 0 12px; font-size:22px; }
+.dlg h3{ margin:18px 0 6px; font-size:16px; color:#556; border-bottom:1px solid var(--line); padding-bottom:4px; }
+.row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 0; }
+.row label{ font-weight:700; min-width:7em; }
+.row input[type=text],.row input[type=tel],.row input[type=number],.row select{ font-size:18px; padding:8px 10px; border:2px solid var(--line); border-radius:10px; flex:1; min-width:8em; font-family:inherit; }
+.row input[type=range]{ flex:1; min-width:120px; }
+.row .note{ color:#778; font-size:13px; width:100%; }
+.actions{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; margin-top:18px; }
+.actions .left{ margin-right:auto; }
+.tabs{ display:flex; gap:6px; }
+.tabs button{ flex:1; }
+.tabs button.sel{ background:var(--acc2); border-color:var(--acc); }
+.emGrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(46px,1fr)); gap:4px; max-height:190px; overflow:auto; border:2px solid var(--line); border-radius:10px; padding:6px; background:#fafbfe; }
+.emGrid button{ font-size:28px; height:46px; border:none; background:transparent; border-radius:8px; }
+.emGrid button:hover{ background:#e8f0fb; }
+.preview{ width:120px; height:120px; border-radius:14px; border:3px solid #0001; background:var(--c,#fff); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; flex:0 0 auto; }
+.preview .pic{ font-size:54px; line-height:1; height:64px; display:flex; align-items:center; }
+.preview .pic img{ max-width:96px; max-height:64px; object-fit:contain; }
+.preview .lbl{ font-size:14px; font-weight:800; text-align:center; overflow:hidden; max-height:2.3em; line-height:1.15; padding:0 4px; }
+.sw{ display:flex; gap:6px; flex-wrap:wrap; }
+.sw button{ width:38px; height:38px; border-radius:50%; border:3px solid #0002; }
+.sw button.sel{ border-color:#222; }
+.sw button.none{ background:repeating-linear-gradient(45deg,#fff,#fff 4px,#ddd 4px,#ddd 8px); }
+.catList .crow{ display:grid; grid-template-columns:52px 1fr 44px auto; gap:6px; align-items:center; margin:6px 0; }
+.catList input{ font-size:17px; padding:7px 8px; border:2px solid var(--line); border-radius:8px; font-family:inherit; width:100%; }
+.catList input[type=color]{ padding:0; height:40px; }
+.catList .mvs{ display:flex; gap:4px; }
+.catList .mvs button{ width:36px; height:36px; border-radius:8px; border:2px solid var(--line); background:#fff; }
+.radio{ display:flex; gap:6px; flex-wrap:wrap; }
+.radio label{ min-width:0; display:flex; align-items:center; gap:4px; padding:6px 12px; border:2px solid var(--line); border-radius:10px; background:#fff; font-size:16px; }
+.radio label:has(input:checked){ background:var(--acc2); border-color:var(--acc); }
+.check{ display:flex; align-items:center; gap:8px; font-size:17px; font-weight:700; margin:8px 0; }
+.check input{ width:22px; height:22px; }
+.pinBox{ font-size:34px; letter-spacing:.3em; text-align:center; padding:10px; border:2px solid var(--line); border-radius:12px; width:100%; font-family:inherit; }
+#toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#222; color:#fff; padding:10px 18px; border-radius:12px; font-size:16px; opacity:0; pointer-events:none; transition:opacity .25s; z-index:50; max-width:90vw; }
+#toast.show{ opacity:.95; }
+.recState{ font-weight:700; color:#b00020; }
+
+/* ---------- print ---------- */
+#printArea{ display:none; }
+@media print{
+  body{ display:block; overflow:visible; background:#fff; }
+  header,nav,main,#editBar,#toast,dialog{ display:none !important; }
+  #printArea{ display:block; }
+  #printArea h2{ font-size:14pt; margin:0 0 4mm; page-break-after:avoid; }
+  #printArea section{ page-break-inside:auto; margin-bottom:6mm; }
+  #printArea .pg{ display:grid; grid-template-columns:repeat(4,1fr); gap:3mm; }
+  #printArea .pc{ height:44mm; border:0.6mm solid #333; border-radius:4mm; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2mm; page-break-inside:avoid; background:var(--c,#fff); -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  #printArea .pc .pic{ font-size:60pt; line-height:1; height:26mm; display:flex; align-items:center; }
+  #printArea .pc img{ max-height:26mm; max-width:38mm; object-fit:contain; }
+  #printArea .pc .lbl{ font-size:14pt; font-weight:800; text-align:center; }
+}
+</style>
+</head>
+<body data-size="M" data-text="1">
+
+<header id="top">
+  <div id="strip" class="strip" aria-label="えらんだカード"></div>
+  <div class="stripBtns">
+    <button id="btnSpeakAll" class="bigbtn pri">▶ はなす</button>
+    <button id="btnBack" class="bigbtn" title="ひとつもどす">⌫</button>
+    <button id="btnClear" class="bigbtn" title="ぜんぶけす">✕</button>
+  </div>
+  <button id="btnGear" title="長押しで先生モード" aria-label="先生モード（長押し）">⚙</button>
+</header>
+
+<div id="editBar" hidden>
+  <span class="ttl">✏️ 先生モード</span>
+  <button class="btn" id="btnAddCard">＋ カード</button>
+  <button class="btn" id="btnCats">📁 カテゴリ</button>
+  <button class="btn" id="btnSettings">⚙ 設定</button>
+  <button class="btn pri" id="btnExitEdit">✔ おわる</button>
+</div>
+
+<nav id="cats"></nav>
+<main id="grid"></main>
+<div id="toast"></div>
+<div id="printArea"></div>
+
+<!-- ===== card edit dialog ===== -->
+<dialog id="dlgCard">
+  <div class="dlg">
+    <h2 id="cardTitle">カードを編集</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="preview" id="cardPrev"><div class="pic"></div><div class="lbl"></div></div>
+      <div style="flex:1;min-width:200px">
+        <div class="row"><label>表示する言葉</label><input type="text" id="fLabel" placeholder="例：トイレ"></div>
+        <div class="row"><label>読み上げる言葉</label><input type="text" id="fSpeak" placeholder="空なら表示する言葉を読みます"></div>
+        <div class="row"><label>カテゴリ</label><select id="fCat"></select></div>
+      </div>
+    </div>
+
+    <h3>絵</h3>
+    <div class="tabs">
+      <button class="btn sm sel" id="tabEmoji">絵文字</button>
+      <button class="btn sm" id="tabPhoto">写真・画像</button>
+    </div>
+    <div id="paneEmoji" style="margin-top:8px">
+      <div class="row"><label>絵文字</label><input type="text" id="fEmoji" placeholder="下から選ぶか直接入力" style="max-width:10em"></div>
+      <div class="emGrid" id="emGrid"></div>
+    </div>
+    <div id="panePhoto" style="margin-top:8px;display:none">
+      <div class="row">
+        <button class="btn" id="btnPickImg">📁 画像を選ぶ</button>
+        <button class="btn" id="btnCamera">📷 カメラでとる</button>
+        <button class="btn danger sm" id="btnDelImg">画像を消す</button>
+        <input type="file" id="fileImg" accept="image/*" hidden>
+        <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
+        <div class="note">画像は自動で小さくして（最大360px）保存します。写真が無いときは絵文字が表示されます。</div>
+      </div>
+    </div>
+
+    <h3>色</h3>
+    <div class="sw" id="swatches"></div>
+
+    <h3>声</h3>
+    <div class="row">
+      <button class="btn" id="btnTestTTS">🔊 合成音声できく</button>
+      <button class="btn" id="btnRec">● 録音する</button>
+      <button class="btn" id="btnRecStop" disabled>■ 止める</button>
+      <button class="btn" id="btnRecPlay">▶ 録音をきく</button>
+      <button class="btn danger sm" id="btnRecDel">録音を消す</button>
+      <span id="recState"></span>
+      <div class="note">録音があるときは録音した声で話します（先生や本人の声を入れられます）。最長10秒。</div>
+    </div>
+
+    <label class="check"><input type="checkbox" id="fHidden"> このカードをかくす（生徒の画面に出さない）</label>
+
+    <div class="actions">
+      <button class="btn danger left" id="btnDelCard">🗑 削除</button>
+      <button class="btn" id="btnCancelCard">キャンセル</button>
+      <button class="btn pri" id="btnSaveCard">保存</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ===== category dialog ===== -->
+<dialog id="dlgCats">
+  <div class="dlg">
+    <h2>カテゴリの編集</h2>
+    <div class="catList" id="catList"></div>
+    <button class="btn" id="btnAddCat">＋ カテゴリを追加</button>
+    <div class="note" style="color:#778;font-size:13px;margin-top:6px">削除したカテゴリのカードは、いちばん上のカテゴリへ移ります。</div>
+    <div class="actions">
+      <button class="btn" id="btnCancelCats">キャンセル</button>
+      <button class="btn pri" id="btnSaveCats">保存</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ===== settings dialog ===== -->
+<dialog id="dlgSet">
+  <div class="dlg">
+    <h2>設定</h2>
+    <h3>音声</h3>
+    <div class="row"><label>声</label><select id="sVoice"></select></div>
+    <div class="row"><label>速さ <span id="sRateV"></span></label><input type="range" id="sRate" min="0.5" max="1.6" step="0.1"></div>
+    <div class="row"><label>高さ <span id="sPitchV"></span></label><input type="range" id="sPitch" min="0.5" max="2" step="0.1"></div>
+    <div class="row"><button class="btn" id="btnTestVoice">🔊 ためしにきく</button><div class="note">声が出ないときは、端末の音量とマナーモードを確認してください。iPadでは日本語の声がない場合、設定→アクセシビリティ→読み上げコンテンツ→声 で追加できます。</div></div>
+
+    <h3>画面</h3>
+    <div class="row"><label>カードの大きさ</label>
+      <div class="radio">
+        <label><input type="radio" name="sSize" value="S">小</label>
+        <label><input type="radio" name="sSize" value="M">中</label>
+        <label><input type="radio" name="sSize" value="L">大</label>
+      </div>
+    </div>
+    <label class="check"><input type="checkbox" id="sText"> カードに文字を表示する</label>
+    <label class="check"><input type="checkbox" id="sStrip"> 文章づくり（上の欄にカードを並べて「はなす」）を使う</label>
+    <label class="check"><input type="checkbox" id="sTap"> カードを押したとき、すぐ読み上げる</label>
+    <div class="row"><button class="btn" id="btnFull">⛶ 全画面にする</button><div class="note">iPadでは Safari の共有 → 「ホーム画面に追加」 で全画面アプリのように使えます。</div></div>
+
+    <h3>先生モードの入り方</h3>
+    <div class="row"><label>長押しの秒数</label><input type="number" id="sHold" min="0.5" max="5" step="0.5" style="max-width:6em"> 秒</div>
+    <div class="row"><label>暗証番号</label><input type="tel" id="sPin" placeholder="空なら暗証番号なし" maxlength="8" style="max-width:10em"><div class="note">右上の ⚙ を長押し（＋暗証番号）で先生モードに入ります。生徒が間違って編集しないための仕組みです。</div></div>
+
+    <h3>データ</h3>
+    <div class="row">
+      <button class="btn" id="btnExport">💾 ファイルに書き出す</button>
+      <button class="btn" id="btnImport">📂 ファイルを読み込む</button>
+      <input type="file" id="fileImport" accept=".json,application/json" hidden>
+      <button class="btn" id="btnPrint">🖨 カードを印刷</button>
+      <div class="note">データはこのブラウザの中に自動保存されます。別の端末で使うときや、生徒ごとのセットを作るときは「書き出す」でJSONファイルにして、相手の端末で「読み込む」。</div>
+    </div>
+    <div class="row"><button class="btn danger" id="btnReset">最初のカードに戻す（全部消える）</button></div>
+
+    <div class="actions">
+      <button class="btn pri" id="btnCloseSet">閉じる</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ===== PIN dialog ===== -->
+<dialog id="dlgPin">
+  <div class="dlg">
+    <h2>暗証番号</h2>
+    <input class="pinBox" type="tel" id="pinIn" maxlength="8" autocomplete="off" inputmode="numeric">
+    <div class="actions">
+      <button class="btn" id="btnPinCancel">やめる</button>
+      <button class="btn pri" id="btnPinOk">OK</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ===== confirm dialog ===== -->
+<dialog id="dlgConfirm">
+  <div class="dlg">
+    <h2 id="cfTitle"></h2>
+    <div id="cfMsg" style="font-size:17px;white-space:pre-wrap"></div>
+    <div class="actions">
+      <button class="btn" id="cfNo">キャンセル</button>
+      <button class="btn danger" id="cfYes">OK</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+'use strict';
+const KEY='commCardApp';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DEF_S={rate:1, pitch:1, voice:'', size:'M', showText:true, strip:true, speakOnTap:true, pin:'', hold:1.5};
+const COLORS=['#ffffff','#ffe4e1','#fff2b3','#e3f6d8','#d9ecff','#efe1ff','#ffe9c7','#e0f7f5','#f4f4f4'];
+const EMOJI='😀 😄 😊 🙂 😢 😠 😨 😴 😲 🤒 🤕 🤧 🤢 😮‍💨 😋 🤗 🙇 🙏 🙋 🙅 🙆 🤷 👍 👎 👌 ✋ 👋 👉 👀 🤝 💪 🤲 ❤️ 💔 ⭕ ❌ ❓ ❗ ➕ ➖ ✅ 🏁 🔁 ⏳ ⏰ 🛑 🔊 🔇 🌅 ☀️ 🌙 ⭐ 🌧️ ⛄ 🌸 🍂 👩‍🏫 👨‍🏫 👩 👨 👧 👦 👫 👨‍👩‍👧‍👦 🧑‍⚕️ 👮 🧑‍🍳 🍚 🍙 🍞 🍜 🍛 🍝 🍕 🍔 🍱 🍣 🥗 🥦 🍎 🍌 🍊 🍇 🍓 🍪 🍰 🍦 💧 🍵 🧃 🥛 🥤 ☕ 🍽️ 🥄 🚻 🚽 🚿 🛁 🧼 🪥 🏠 🏫 🏥 🏪 🏢 🛒 🚌 🚃 🚗 🚲 🚶 🏃 🛏️ 🛋️ 🪑 🚪 📖 📚 ✏️ 📝 🎒 💻 📱 📺 🎵 🎧 🎨 🎮 ⚽ 🏀 🎾 🏊 🧹 🛠️ 🧺 👕 👖 👟 🧢 🧥 🌂 💊 🩹 🩺 🧠 🦷 👂 👃 👁️ 👄 🦶 ✋ 🎁 🎂 🎉 📷 💡 🔑 💰 🗓️ 🕐 ⬆️ ⬇️ ⬅️ ➡️'.split(' ');
+
+/* ---------- storage (IndexedDB → localStorage) ---------- */
+const store={
+  db:null,
+  open(){ if(!('indexedDB' in window)) return Promise.resolve(null); if(this.db) return Promise.resolve(this.db);
+    return new Promise((res,rej)=>{ const r=indexedDB.open(KEY,1); r.onupgradeneeded=()=>r.result.createObjectStore('kv'); r.onsuccess=()=>res(this.db=r.result); r.onerror=()=>rej(r.error); r.onblocked=()=>rej(new Error('blocked')); }); },
+  async get(){
+    try{ const db=await this.open(); if(db){ const v=await new Promise((res,rej)=>{ const q=db.transaction('kv').objectStore('kv').get('data'); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); if(v) return v; } }catch(e){ console.warn('idb get',e); }
+    try{ const t=localStorage.getItem(KEY); return t?JSON.parse(t):null; }catch(e){ return null; }
+  },
+  async set(v){
+    try{ const db=await this.open(); if(db){ await new Promise((res,rej)=>{ const tx=db.transaction('kv','readwrite'); tx.objectStore('kv').put(v,'data'); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error); }); return true; } }catch(e){ console.warn('idb set',e); }
+    try{ localStorage.setItem(KEY,JSON.stringify(v)); return true; }catch(e){ return false; }
+  }
+};
+
+/* ---------- default data ---------- */
+function defaultData(){
+  const cats=[], cards=[];
+  const C=(name,emoji,color,list)=>{ const id=uid(); cats.push({id,name,emoji,color});
+    list.forEach(([label,em,speak])=>cards.push({id:uid(),cat:id,label,speak:speak||'',emoji:em,img:'',audio:'',color:'',hidden:false})); };
+  C('よくつかう','⭐','#fff2b3',[['はい','👍'],['いいえ','👎'],['トイレ','🚻','トイレにいきたい'],['たすけて','🙋'],['まって','✋'],['おわり','🏁'],['もういっかい','🔁'],['わかりません','🤷']]);
+  C('あいさつ','👋','#d9ecff',[['おはよう','🌅','おはようございます'],['こんにちは','☀️'],['さようなら','👋'],['ありがとう','🙏','ありがとうございます'],['ごめんなさい','🙇'],['おねがいします','🤲'],['いただきます','🍚'],['ごちそうさま','😋','ごちそうさまでした'],['おやすみ','🌙','おやすみなさい'],['おつかれさま','😊','おつかれさまでした']]);
+  C('きもち','😊','#ffe4e1',[['うれしい','😄'],['たのしい','🤗'],['かなしい','😢'],['おこってる','😠'],['こわい','😨'],['つかれた','😮‍💨'],['いたい','🤕'],['ねむい','😴'],['びっくり','😲'],['いや','🙅','いやです'],['すき','❤️'],['きらい','💔']]);
+  C('したい','🙋','#efe1ff',[['たべたい','🍽️'],['のみたい','🥤'],['あそびたい','🎮'],['やすみたい','🛋️'],['かえりたい','🏠'],['いきたい','🚶'],['みたい','👀'],['ききたい','🎧'],['てつだって','🤝','てつだってください'],['ほしい','🎁'],['やりたい','💪'],['やめたい','🛑']]);
+  C('たべもの','🍙','#ffe9c7',[['ごはん','🍚'],['パン','🍞'],['おにぎり','🍙'],['みず','💧'],['おちゃ','🍵'],['ジュース','🧃'],['ぎゅうにゅう','🥛'],['おかし','🍪'],['くだもの','🍎'],['やさい','🥦'],['カレー','🍛'],['ラーメン','🍜']]);
+  C('からだ','🩺','#e0f7f5',[['あたまがいたい','🤕'],['おなかがいたい','🤢'],['ねつがある','🤒'],['かぜをひいた','🤧'],['けがをした','🩹'],['のどがかわいた','🥤'],['おなかがすいた','🍽️'],['くすり','💊','くすりをください'],['ほけんしつ','🏥','ほけんしつにいきたい'],['トイレにいきたい','🚽']]);
+  C('ひと','👨‍👩‍👧','#e3f6d8',[['せんせい','👩‍🏫'],['おかあさん','👩'],['おとうさん','👨'],['ともだち','👫'],['わたし','🙂'],['あなた','👉'],['みんな','👨‍👩‍👧‍👦'],['かぞく','🏠']]);
+  C('ばしょ','🏫','#d9ecff',[['きょうしつ','🏫'],['たいいくかん','🏀'],['としょしつ','📚'],['しょくどう','🍽️'],['ほけんしつ','🏥'],['トイレ','🚻'],['うち','🏠'],['こうてい','⚽'],['バス','🚌'],['でんしゃ','🚃']]);
+  C('かつどう','📝','#fff2b3',[['べんきょう','📖'],['うんどう','🏃'],['おんがく','🎵'],['えをかく','🎨'],['そうじ','🧹'],['きゅうしょく','🍱'],['やすみじかん','⏰'],['かえるじかん','🎒'],['パソコン','💻'],['しごと','🛠️']]);
+  C('へんじ','💬','#f4f4f4',[['はい','⭕'],['いいえ','❌'],['わかった','👌','わかりました'],['わからない','❓'],['できる','💪','できます'],['できない','😣','できません'],['もっと','➕'],['おわり','🏁','おわりました'],['ちょっとまって','⏳','ちょっとまってください'],['いっしょに','🤝','いっしょにやりたい']]);
+  return {v:1, settings:{...DEF_S}, categories:cats, cards};
+}
+
+/* ---------- state ---------- */
+let data=null, S=null, cur=null, mode='use', strip=[], lastTap=0;
+let saveT=null;
+function save(){ clearTimeout(saveT); saveT=setTimeout(()=>store.set(data).then(ok=>{ if(!ok) toast('保存できませんでした。写真や録音が多すぎる可能性があります'); }),150); }
+function toast(msg,ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),ms); }
+const catOf=id=>data.categories.find(c=>c.id===id);
+const cardColor=c=>c.color||(catOf(c.cat)||{}).color||'#fff';
+
+/* ---------- speech ---------- */
+let curAudio=null, seqNo=0;
+/* iPad/iPhone: 音は「最初のタッチ」の中で一度鳴らさないと、その後ずっと鳴らない。
+   そこで最初のタッチで無音を1回再生して音声と録音再生を使える状態にする。
+   また、1つの audio 要素を使い回す（新しく作ると毎回ブロックされるため）。 */
+const SILENT='data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YSADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
+const player=new Audio(); player.setAttribute('playsinline',''); player.preload='auto';
+let unlocked=false;
+function unlockAudio(){
+  if(unlocked) return; unlocked=true;
+  try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}   // マナーモードでも音を出す（iPadOS 17〜）
+  try{ player.src=SILENT; player.play().catch(()=>{}); }catch(e){}
+  try{ if('speechSynthesis' in window){ const u=new SpeechSynthesisUtterance(' '); u.volume=0; u.lang='ja-JP'; speechSynthesis.speak(u); } }catch(e){}
+}
+['pointerdown','touchend','keydown'].forEach(ev=>document.addEventListener(ev,unlockAudio,{capture:true,passive:true}));
+document.addEventListener('touchstart',()=>{},{passive:true});   // iOS で :active（押したときの縮み）を効かせる
+let ttsActive=0, ttsWarned=false;
+function jaVoices(){ try{ return speechSynthesis.getVoices().filter(v=>/^ja/i.test(v.lang)); }catch(e){ return []; } }
+function stopAll(){ seqNo++;
+  try{ if(ttsActive>0){ ttsActive=0; speechSynthesis.cancel(); } }catch(e){}   // iOS は cancel 直後の speak を落とすことがあるので、言葉を話しているときだけ止める
+  if(curAudio){ try{curAudio.pause();}catch(e){} curAudio=null; } $$('.on').forEach(e=>e.classList.remove('on')); }
+function tts(text){ return new Promise(res=>{
+  if(!('speechSynthesis' in window)||!text){ res(); return; }
+  const u=new SpeechSynthesisUtterance(text); u.lang='ja-JP'; u.rate=S.rate; u.pitch=S.pitch;
+  const v=S.voice&&jaVoices().find(v=>v.name===S.voice); if(v) u.voice=v;   // 未設定なら端末の標準の日本語の声
+  let done=false; const fin=()=>{ if(!done){ done=true; if(ttsActive>0) ttsActive--; res(); } };
+  let started=false; u.onstart=()=>{ started=true; ttsWarned=false; };
+  u.onend=fin; u.onerror=fin; setTimeout(fin,2000+text.length*450); ttsActive++;
+  setTimeout(()=>{ if(!started&&!done&&!ttsWarned){ ttsWarned=true; toast("声が出ないときは：音量を上げる／消音（マナー）を切る／設定の「声」を変える",4500); } },2500);
+  try{ speechSynthesis.resume(); }catch(e){}   // iOS で一時停止のまま固まるのを防ぐ
+  speechSynthesis.speak(u);
+});}
+function playAudio(src){ return new Promise(res=>{
+  const a=player; curAudio=a; let done=false;
+  const fin=()=>{ if(!done){ done=true; a.onended=a.onerror=null; if(curAudio===a) curAudio=null; res(); } };
+  a.onended=fin; a.onerror=fin; a.src=src; a.currentTime=0; a.play().catch(fin); setTimeout(fin,15000);
+});}
+async function speakItems(items, els=[]){
+  stopAll(); const seq=seqNo; els.forEach(e=>e&&e.classList.add('on'));
+  let buf=[]; const flush=async()=>{ if(buf.length){ const t=buf.join('　'); buf=[]; await tts(t); } };
+  for(const it of items){ if(seq!==seqNo) return; if(it.audio){ await flush(); if(seq!==seqNo) return; await playAudio(it.audio); } else buf.push(it.speak||it.label); }
+  await flush();
+  if(seq===seqNo) els.forEach(e=>e&&e.classList.remove('on'));
+}
+const speakCard=(c,el)=>speakItems([c],[el]);
+
+/* ---------- render ---------- */
+function applySettings(){
+  document.body.dataset.size=S.size; document.body.dataset.text=S.showText?'1':'0';
+  document.documentElement.style.setProperty('--hold',S.hold+'s');
+  $('#top').hidden=false;
+  $('#strip').style.display=S.strip?'':'none';
+  $('.stripBtns').style.display=S.strip?'':'none';
+}
+function render(){ renderCats(); renderGrid(); renderStrip(); }
+function renderCats(){
+  if(!catOf(cur)) cur=(data.categories[0]||{}).id;
+  $('#cats').innerHTML=data.categories.map(c=>`<button class="chip${c.id===cur?' sel':''}" data-id="${c.id}" style="--c:${esc(c.color)}"><span class="em">${esc(c.emoji)}</span>${esc(c.name)}</button>`).join('');
+}
+function renderGrid(){
+  const g=$('#grid'); const edit=mode==='edit';
+  const list=data.cards.filter(c=>c.cat===cur&&(edit||!c.hidden));
+  let h=list.map(c=>`<div class="card${c.hidden?' hidden':''}" role="button" tabindex="0" data-id="${c.id}" style="--c:${esc(cardColor(c))}">
+      ${c.hidden?'<span class="badge">かくれています</span>':''}
+      <div class="pic">${c.img?`<img src="${c.img}" alt="">`:esc(c.emoji||'🔲')}</div>
+      <div class="lbl">${esc(c.label)}</div>
+      ${edit?`<span class="pen">✎</span><div class="mv"><button data-mv="-1" aria-label="左へ">◀</button><button data-mv="1" aria-label="右へ">▶</button></div>`:''}
+    </div>`).join('');
+  if(edit) h+=`<div class="card add" role="button" tabindex="0" data-add="1"><div class="pic">＋</div><div class="lbl">カードを追加</div></div>`;
+  else if(!list.length) h=`<div class="empty">このカテゴリにはカードがありません。<br>右上の ⚙ を長押しして先生モードで追加できます。</div>`;
+  g.innerHTML=h;
+}
+function renderStrip(){
+  const s=$('#strip');
+  if(!strip.length){ s.innerHTML='<span class="ph">カードをおすと ここにならびます</span>'; return; }
+  s.innerHTML=strip.map((id,i)=>{ const c=data.cards.find(x=>x.id===id); if(!c) return ''; return `<div class="it" data-i="${i}" style="--c:${esc(cardColor(c))}"><div class="pic">${c.img?`<img src="${c.img}" alt="">`:esc(c.emoji||'')}</div><div class="lbl">${esc(c.label)}</div></div>`; }).join('');
+  s.scrollLeft=s.scrollWidth;
+}
+
+/* ---------- interactions ---------- */
+$('#cats').addEventListener('click',e=>{ const b=e.target.closest('.chip'); if(!b) return; cur=b.dataset.id; renderCats(); renderGrid(); });
+function cardAct(el,e){
+  if(el.dataset.add){ openCardDlg(null); return; }
+  const c=data.cards.find(x=>x.id===el.dataset.id); if(!c) return;
+  const mv=e&&e.target.closest('[data-mv]'); if(mv){ moveCard(c,+mv.dataset.mv); return; }
+  const now=Date.now(); if(now-lastTap<250) return; lastTap=now;
+  if(mode==='edit'){ openCardDlg(c); return; }
+  if(S.strip){ strip.push(c.id); renderStrip(); if(S.speakOnTap) speakCard(c,el); else { el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),250); } }
+  else speakCard(c,el);
+}
+$('#grid').addEventListener('click',e=>{ const el=e.target.closest('.card'); if(el) cardAct(el,e); });
+$('#grid').addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ const el=e.target.closest('.card'); if(el){ e.preventDefault(); cardAct(el,e); } } });
+$('#strip').addEventListener('click',e=>{ const it=e.target.closest('.it'); if(!it) return; const c=data.cards.find(x=>x.id===strip[+it.dataset.i]); if(c) speakItems([c],[it]); });
+$('#btnSpeakAll').onclick=()=>{ const items=strip.map(id=>data.cards.find(x=>x.id===id)).filter(Boolean); if(!items.length){ toast('カードをえらんでから おしてね'); return; } speakItems(items,$$('#strip .it')); };
+$('#btnBack').onclick=()=>{ stopAll(); strip.pop(); renderStrip(); };
+$('#btnClear').onclick=()=>{ stopAll(); strip=[]; renderStrip(); };
+document.addEventListener('contextmenu',e=>{ if(mode!=='edit') e.preventDefault(); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden) stopAll(); });
+
+function moveCard(c,dir){
+  const list=data.cards.filter(x=>x.cat===c.cat); const i=list.indexOf(c); const j=i+dir; if(j<0||j>=list.length) return;
+  const a=data.cards.indexOf(c), b=data.cards.indexOf(list[j]); [data.cards[a],data.cards[b]]=[data.cards[b],data.cards[a]];
+  save(); renderGrid();
+}
+
+/* ---------- teacher mode (long press + PIN) ---------- */
+const gear=$('#btnGear'); let holdT=null;
+gear.addEventListener('pointerdown',e=>{ e.preventDefault(); gear.classList.add('hold'); clearTimeout(holdT); holdT=setTimeout(()=>{ gear.classList.remove('hold'); enterEdit(); },S.hold*1000); });
+['pointerup','pointerleave','pointercancel'].forEach(ev=>gear.addEventListener(ev,()=>{ clearTimeout(holdT); gear.classList.remove('hold'); }));
+gear.addEventListener('click',()=>{ if(mode==='use') toast(`⚙ を ${S.hold}秒 長押しすると先生モードになります`,1800); });
+function enterEdit(){
+  if(S.pin){ $('#pinIn').value=''; $('#dlgPin').showModal(); setTimeout(()=>$('#pinIn').focus(),50); }
+  else setMode('edit');
+}
+$('#btnPinOk').onclick=()=>{ if($('#pinIn').value===S.pin){ $('#dlgPin').close(); setMode('edit'); } else { toast('暗証番号がちがいます'); $('#pinIn').value=''; } };
+$('#btnPinCancel').onclick=()=>$('#dlgPin').close();
+$('#pinIn').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#btnPinOk').click(); });
+function setMode(m){ mode=m; stopAll(); document.body.dataset.mode=m; $('#editBar').hidden=(m!=='edit'); gear.hidden=(m==='edit'); renderGrid(); if(m==='edit') toast('先生モード：カードを押すと編集できます'); }
+$('#btnExitEdit').onclick=()=>setMode('use');
+$('#btnAddCard').onclick=()=>openCardDlg(null);
+
+/* ---------- confirm ---------- */
+function confirmDlg(title,msg,yes='OK'){ return new Promise(res=>{ $('#cfTitle').textContent=title; $('#cfMsg').textContent=msg; $('#cfYes').textContent=yes; const d=$('#dlgConfirm');
+  const done=v=>{ d.close(); res(v); }; $('#cfYes').onclick=()=>done(true); $('#cfNo').onclick=()=>done(false); d.showModal(); }); }
+
+/* ---------- card dialog ---------- */
+let ed=null, editingId=null;
+const emGrid=$('#emGrid'); emGrid.innerHTML=EMOJI.map(e=>`<button type="button" data-em="${e}">${e}</button>`).join('');
+emGrid.addEventListener('click',e=>{ const b=e.target.closest('[data-em]'); if(!b) return; ed.emoji=b.dataset.em; $('#fEmoji').value=ed.emoji; prev(); });
+$('#fEmoji').addEventListener('input',()=>{ ed.emoji=$('#fEmoji').value.trim(); prev(); });
+$('#fLabel').addEventListener('input',()=>{ ed.label=$('#fLabel').value; prev(); });
+$('#fSpeak').addEventListener('input',()=>{ ed.speak=$('#fSpeak').value; });
+$('#fCat').addEventListener('change',()=>{ ed.cat=$('#fCat').value; prev(); });
+$('#fHidden').addEventListener('change',()=>{ ed.hidden=$('#fHidden').checked; });
+$('#tabEmoji').onclick=()=>showPane('emoji'); $('#tabPhoto').onclick=()=>showPane('photo');
+function showPane(p){ $('#paneEmoji').style.display=p==='emoji'?'':'none'; $('#panePhoto').style.display=p==='photo'?'':'none'; $('#tabEmoji').classList.toggle('sel',p==='emoji'); $('#tabPhoto').classList.toggle('sel',p==='photo'); }
+$('#btnPickImg').onclick=()=>$('#fileImg').click(); $('#btnCamera').onclick=()=>$('#fileCam').click();
+['#fileImg','#fileCam'].forEach(sel=>$(sel).addEventListener('change',async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return; const d=await resizeImage(f,360); if(!d){ toast('画像を読み込めませんでした'); return; } ed.img=d; prev(); }));
+$('#btnDelImg').onclick=()=>{ ed.img=''; prev(); };
+function resizeImage(file,max){ return new Promise(res=>{ const img=new Image(); const url=URL.createObjectURL(file);
+  img.onload=()=>{ let w=img.naturalWidth,h=img.naturalHeight; const s=Math.min(1,max/Math.max(w,h)); w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
+    const c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d'); if(file.type!=='image/png'){ x.fillStyle='#fff'; x.fillRect(0,0,w,h); } x.drawImage(img,0,0,w,h); URL.revokeObjectURL(url);
+    res(file.type==='image/png'?c.toDataURL('image/png'):c.toDataURL('image/jpeg',0.85)); };
+  img.onerror=()=>{ URL.revokeObjectURL(url); res(null); }; img.src=url; }); }
+$('#swatches').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; ed.color=b.dataset.c; prev(); });
+function prev(){
+  const p=$('#cardPrev'); p.style.setProperty('--c',ed.color||(catOf(ed.cat)||{}).color||'#fff');
+  p.querySelector('.pic').innerHTML=ed.img?`<img src="${ed.img}" alt="">`:esc(ed.emoji||'🔲'); p.querySelector('.lbl').textContent=ed.label||'（ことば）';
+  $('#swatches').innerHTML=`<button type="button" class="none${ed.color?'':' sel'}" data-c="" title="カテゴリの色"></button>`+COLORS.map(c=>`<button type="button" class="${ed.color===c?'sel':''}" data-c="${c}" style="background:${c}"></button>`).join('');
+  recUI();
+}
+function openCardDlg(c){
+  editingId=c?c.id:null;
+  ed=c?{...c}:{cat:cur,label:'',speak:'',emoji:'🙂',img:'',audio:'',color:'',hidden:false};
+  $('#cardTitle').textContent=c?'カードを編集':'カードを追加';
+  $('#fLabel').value=ed.label; $('#fSpeak').value=ed.speak; $('#fEmoji').value=ed.emoji; $('#fHidden').checked=!!ed.hidden;
+  $('#fCat').innerHTML=data.categories.map(k=>`<option value="${k.id}"${k.id===ed.cat?' selected':''}>${esc(k.emoji)} ${esc(k.name)}</option>`).join('');
+  $('#btnDelCard').style.visibility=c?'visible':'hidden';
+  showPane(ed.img?'photo':'emoji'); prev();
+  $('#dlgCard').showModal(); if(!c) setTimeout(()=>$('#fLabel').focus(),50);
+}
+$('#btnCancelCard').onclick=()=>{ stopRec(true); $('#dlgCard').close(); };
+$('#btnSaveCard').onclick=()=>{
+  stopRec(true);
+  if(!ed.label.trim()&&!ed.img&&!ed.emoji){ toast('表示する言葉か絵を入れてください'); return; }
+  if(!ed.label.trim()&&!ed.speak.trim()&&!ed.audio){ toast('表示する言葉を入れてください'); return; }
+  ed.label=ed.label.trim(); ed.speak=ed.speak.trim();
+  if(editingId){ const i=data.cards.findIndex(x=>x.id===editingId); data.cards[i]={...data.cards[i],...ed}; }
+  else { ed.id=uid(); data.cards.push(ed); }
+  cur=ed.cat; save(); $('#dlgCard').close(); render(); toast('保存しました');
+};
+$('#btnDelCard').onclick=async()=>{ if(!editingId) return; if(!await confirmDlg('カードを削除',`「${ed.label}」を削除しますか？`,'削除する')) return; data.cards=data.cards.filter(x=>x.id!==editingId); strip=strip.filter(id=>id!==editingId); save(); $('#dlgCard').close(); render(); };
+$('#btnTestTTS').onclick=()=>{ stopAll(); tts(ed.speak||ed.label||''); };
+
+/* recording */
+let rec=null, chunks=[], recTimer=null;
+function recUI(){ const has=!!ed.audio; $('#btnRecPlay').disabled=!has; $('#btnRecDel').disabled=!has; $('#recState').innerHTML=rec?'<span class="recState">● 録音中…</span>':(has?'🎙 録音あり':'録音なし（合成音声で話します）'); }
+$('#btnRec').onclick=async()=>{
+  if(rec) return;
+  if(!navigator.mediaDevices||!window.MediaRecorder){ toast('このブラウザでは録音できません'); return; }
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({audio:true});
+    // mp4(AAC) を優先：iPad でも Windows/Chrome でも再生できる形式
+    const mime=['audio/mp4;codecs=mp4a.40.2','audio/mp4','audio/aac','audio/webm;codecs=opus','audio/webm','audio/ogg'].find(m=>MediaRecorder.isTypeSupported(m))||'';
+    rec=new MediaRecorder(st,mime?{mimeType:mime}:{}); chunks=[];
+    rec.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+    rec.onstop=()=>{ st.getTracks().forEach(t=>t.stop()); const type=rec.mimeType||mime||'audio/webm'; const keep=!rec._discard; rec=null; clearTimeout(recTimer);
+      if(keep&&chunks.length){ const fr=new FileReader(); fr.onload=()=>{ ed.audio=fr.result; recUI(); toast('録音しました。「▶ 録音をきく」で確認できます'); }; fr.readAsDataURL(new Blob(chunks,{type})); } else recUI();
+      $('#btnRec').disabled=false; $('#btnRecStop').disabled=true; };
+    rec.start(); $('#btnRec').disabled=true; $('#btnRecStop').disabled=false; recUI();
+    recTimer=setTimeout(()=>stopRec(false),10000);
+  }catch(e){ console.warn(e); toast('マイクを使えませんでした（許可が必要です）'); }
+};
+function stopRec(discard){ if(rec&&rec.state!=='inactive'){ rec._discard=discard; rec.stop(); } }
+$('#btnRecStop').onclick=()=>stopRec(false);
+$('#btnRecPlay').onclick=()=>{ if(ed.audio){ stopAll(); playAudio(ed.audio); } };
+$('#btnRecDel').onclick=()=>{ ed.audio=''; recUI(); };
+
+/* ---------- category dialog ---------- */
+let edCats=null;
+$('#btnCats').onclick=()=>{ edCats=data.categories.map(c=>({...c})); renderCatList(); $('#dlgCats').showModal(); };
+function renderCatList(){
+  $('#catList').innerHTML=edCats.map((c,i)=>`<div class="crow" data-i="${i}">
+    <input type="text" data-k="emoji" value="${esc(c.emoji)}" maxlength="4" aria-label="絵文字">
+    <input type="text" data-k="name" value="${esc(c.name)}" placeholder="カテゴリ名" aria-label="名前">
+    <input type="color" data-k="color" value="${esc(c.color||'#ffffff')}" aria-label="色">
+    <div class="mvs"><button type="button" data-mv="-1">▲</button><button type="button" data-mv="1">▼</button><button type="button" data-del="1" ${edCats.length<=1?'disabled':''}>🗑</button></div>
+  </div>`).join('');
+}
+$('#catList').addEventListener('input',e=>{ const r=e.target.closest('.crow'); if(!r) return; edCats[+r.dataset.i][e.target.dataset.k]=e.target.value; });
+$('#catList').addEventListener('click',async e=>{ const r=e.target.closest('.crow'); if(!r) return; const i=+r.dataset.i; const b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.mv){ const j=i+(+b.dataset.mv); if(j<0||j>=edCats.length) return; [edCats[i],edCats[j]]=[edCats[j],edCats[i]]; renderCatList(); }
+  if(b.dataset.del){ const n=data.cards.filter(c=>c.cat===edCats[i].id).length; if(!await confirmDlg('カテゴリを削除',`「${edCats[i].name}」を削除しますか？\n（カード${n}枚はいちばん上のカテゴリへ移ります）`,'削除する')) return; edCats.splice(i,1); renderCatList(); } });
+$('#btnAddCat').onclick=()=>{ edCats.push({id:uid(),name:'',emoji:'📁',color:'#ffffff'}); renderCatList(); const ins=$$('#catList input[data-k=name]'); ins[ins.length-1].focus(); };
+$('#btnCancelCats').onclick=()=>$('#dlgCats').close();
+$('#btnSaveCats').onclick=()=>{
+  edCats.forEach(c=>{ c.name=c.name.trim()||'カテゴリ'; c.emoji=c.emoji.trim(); });
+  const ids=new Set(edCats.map(c=>c.id)); const first=edCats[0].id;
+  data.cards.forEach(c=>{ if(!ids.has(c.cat)) c.cat=first; });
+  data.categories=edCats; if(!ids.has(cur)) cur=first; save(); $('#dlgCats').close(); render();
+};
+
+/* ---------- settings dialog ---------- */
+function fillVoices(){ const sel=$('#sVoice'); const vs=jaVoices(); sel.innerHTML=`<option value="">おまかせ（端末の標準の声）</option>`+vs.map(v=>`<option value="${esc(v.name)}"${v.name===S.voice?' selected':''}>${esc(v.name)}</option>`).join(''); }
+if('speechSynthesis' in window){ speechSynthesis.onvoiceschanged=fillVoices; }
+$('#btnSettings').onclick=()=>{
+  fillVoices(); $('#sRate').value=S.rate; $('#sPitch').value=S.pitch; $('#sRateV').textContent=S.rate; $('#sPitchV').textContent=S.pitch;
+  $$('input[name=sSize]').forEach(r=>r.checked=r.value===S.size); $('#sText').checked=S.showText; $('#sStrip').checked=S.strip; $('#sTap').checked=S.speakOnTap; $('#sHold').value=S.hold; $('#sPin').value=S.pin;
+  $('#dlgSet').showModal();
+};
+function setChange(){ S.voice=$('#sVoice').value; S.rate=+$('#sRate').value; S.pitch=+$('#sPitch').value; $('#sRateV').textContent=S.rate; $('#sPitchV').textContent=S.pitch;
+  S.size=($$('input[name=sSize]').find(r=>r.checked)||{}).value||'M'; S.showText=$('#sText').checked; S.strip=$('#sStrip').checked; S.speakOnTap=$('#sTap').checked;
+  S.hold=Math.min(5,Math.max(0.5,+$('#sHold').value||1.5)); S.pin=$('#sPin').value.trim(); applySettings(); save(); }
+['#sVoice','#sRate','#sPitch','#sText','#sStrip','#sTap','#sHold','#sPin'].forEach(s=>$(s).addEventListener('input',setChange));
+$$('input[name=sSize]').forEach(r=>r.addEventListener('change',setChange));
+$('#btnTestVoice').onclick=()=>{ stopAll(); tts('こんにちは。これは ためしの こえです'); };
+$('#btnCloseSet').onclick=()=>{ setChange(); $('#dlgSet').close(); if(!strip.length||!S.strip){ strip=[]; } render(); };
+$('#btnFull').onclick=()=>{ const el=document.documentElement;
+  if(document.fullscreenElement||document.webkitFullscreenElement){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); return; }
+  const rf=el.requestFullscreen||el.webkitRequestFullscreen;
+  if(rf){ try{ const p=rf.call(el); if(p&&p.catch) p.catch(()=>toast('全画面にできませんでした。「ホーム画面に追加」をお試しください',3500)); }catch(e){ toast('全画面にできませんでした。「ホーム画面に追加」をお試しください',3500); } }
+  else toast('このブラウザは全画面に対応していません。「ホーム画面に追加」をお試しください',3500); };
+const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+
+/* export / import / print / reset */
+$('#btnExport').onclick=async()=>{ const d=new Date(); const name=`コミュニケーションカード_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.json`;
+  const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
+  // iPad/iPhone：共有シートを出す（「"ファイル"に保存」・AirDrop・OneDrive などを選べる）
+  if(/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){
+    try{ const file=new File([blob],name,{type:'application/json'}); if(navigator.canShare&&navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:name}); toast('書き出しました',2000); return; } }
+    catch(e){ if(e&&e.name==='AbortError') return; }
+  }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000); toast('書き出しました：'+name,3000); };
+$('#btnImport').onclick=()=>$('#fileImport').click();
+$('#fileImport').addEventListener('change',async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  try{ const j=JSON.parse(await f.text()); if(!j||!Array.isArray(j.categories)||!Array.isArray(j.cards)) throw new Error('形式');
+    if(!await confirmDlg('ファイルを読み込む',`「${f.name}」のカード${j.cards.length}枚・カテゴリ${j.categories.length}個で、今のデータを置きかえます。よろしいですか？`,'読み込む')) return;
+    data={v:1,settings:{...DEF_S,...(j.settings||{})},categories:j.categories,cards:j.cards}; S=data.settings; cur=null; strip=[]; save(); applySettings(); render(); $('#dlgSet').close(); toast('読み込みました');
+  }catch(err){ toast('読み込めませんでした（このアプリで書き出したJSONファイルを選んでください）',3500); } });
+$('#btnReset').onclick=async()=>{ if(!await confirmDlg('最初のカードに戻す','追加したカード・写真・録音・設定をすべて消して、最初の状態に戻します。\n必要なら先に「書き出す」で保存してください。','戻す')) return; data=defaultData(); S=data.settings; cur=null; strip=[]; save(); applySettings(); render(); $('#dlgSet').close(); toast('最初の状態に戻しました'); };
+$('#btnPrint').onclick=()=>{ $('#printArea').innerHTML=data.categories.map(k=>{ const cs=data.cards.filter(c=>c.cat===k.id&&!c.hidden); if(!cs.length) return ''; return `<section><h2>${esc(k.emoji)} ${esc(k.name)}</h2><div class="pg">${cs.map(c=>`<div class="pc" style="--c:${esc(cardColor(c))}"><div class="pic">${c.img?`<img src="${c.img}" alt="">`:esc(c.emoji||'')}</div><div class="lbl">${esc(c.label)}</div></div>`).join('')}</div></section>`; }).join(''); $('#dlgSet').close(); setTimeout(()=>window.print(),100); };
+window.addEventListener('afterprint',()=>{ $('#printArea').innerHTML=''; });
+
+/* ---------- boot ---------- */
+(async function boot(){
+  const saved=await store.get();
+  if(saved&&Array.isArray(saved.cards)&&Array.isArray(saved.categories)&&saved.categories.length){ data=saved; data.settings={...DEF_S,...(data.settings||{})}; }
+  else { data=defaultData(); save(); }
+  S=data.settings; applySettings(); render();
+  if(standalone()) $('#btnFull').closest('.row').style.display='none';
+  // 写真や録音が勝手に消されないよう、端末に「消さないで」と頼む（ホーム画面に追加したときに有効）
+  try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+  // ホーム画面に追加したとき、ネットなしでも開けるようにする（https のときだけ）
+  if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+  if(!('speechSynthesis' in window)) toast('このブラウザは読み上げに対応していません（Chrome / Safari / Edge をお使いください）',4000);
+})();
+</script>
+</body>
+</html>
