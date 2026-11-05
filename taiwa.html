@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="対話カード">
+<meta name="theme-color" content="#ffffff">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="taiwa.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>対話カード</title>
+<style>
+/* 対話カード：画面を2つに分けて、ふたりがカードで話す。
+   カードは「コミュニケーションカード」と同じもの（同じ場所から開くと、先生が作ったカードもそのまま使う）。 */
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{ height:100%; margin:0; overflow:hidden; overscroll-behavior:none; }
+body{ font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","BIZ UDPGothic",Meiryo,sans-serif; background:#444; color:#222;
+  display:flex; flex-direction:column; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:manipulation;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  --card-min:96px; --pic:46px; --lbl:15px; }
+body[data-size="S"]{ --card-min:76px; --pic:36px; --lbl:13px; }
+body[data-size="L"]{ --card-min:128px; --pic:64px; --lbl:19px; }
+button{ font-family:inherit; cursor:pointer; color:inherit; }
+
+/* ---- 2分割 ---- */
+.panel{ flex:1 1 0; min-width:0; min-height:0; display:flex; flex-direction:column; gap:6px; padding:6px 8px; background:var(--pbg); }
+#pA{ --pc:#2b6cb0; --pbg:#eef4fc; --pl:#bcd6f5; }
+#pB{ --pc:#c96a00; --pbg:#fff6ea; --pl:#ffd6a3; }
+body[data-layout="face"] #pB{ transform:rotate(180deg); }   /* 向かい合わせ：上半分は向こう側の人が読める向き */
+body[data-layout="side"]{ flex-direction:row; }
+body[data-layout="side"] #pA{ order:0; } body[data-layout="side"] #mid{ order:1; } body[data-layout="side"] #pB{ order:2; }
+#mid{ flex:none; height:30px; display:flex; align-items:center; justify-content:center; background:#444; }
+body[data-layout="side"] #mid{ width:30px; height:auto; }
+#gear{ width:44px; height:26px; border-radius:13px; border:none; background:#666; color:#fff; font-size:15px; line-height:1; position:relative; overflow:hidden; }
+body[data-layout="side"] #gear{ width:26px; height:44px; }
+#gear::after{ content:""; position:absolute; inset:0; background:#fff6; transform:scaleX(0); transform-origin:left; }
+#gear.hold::after{ transform:scaleX(1); transition:transform var(--hold,1.5s) linear; }
+
+/* ---- あいてのことば ---- */
+.inbox{ flex:none; min-height:calc(var(--pic) + 44px); background:#fff; border:3px solid var(--pl); border-radius:14px; padding:4px 8px; display:flex; align-items:center; gap:8px; overflow-x:auto; }
+.inbox .from{ flex:none; font-size:13px; font-weight:800; color:#fff; background:var(--oc); border-radius:10px; padding:3px 8px; }
+.inbox .hint{ color:#99a; font-size:14px; font-weight:700; }
+.inbox.new{ animation:pop 1.2s ease 2; border-color:var(--oc); }
+.inbox.on{ border-color:var(--oc); background:#fffbe6; }
+@keyframes pop{ 0%,100%{ box-shadow:0 0 0 0 transparent; } 50%{ box-shadow:0 0 0 6px var(--oc); } }
+.it{ flex:none; display:flex; flex-direction:column; align-items:center; gap:1px; background:var(--c,#fff); border:2px solid #0002; border-radius:10px; padding:3px 6px; min-width:calc(var(--pic) + 14px); }
+.inbox .it .pic{ height:calc(var(--pic) * 1.15); font-size:calc(var(--pic) * .95); }
+.inbox .it .lbl{ font-size:calc(var(--lbl) + 1px); }
+
+/* ---- じぶんのことば ---- */
+.mine{ flex:none; display:flex; align-items:stretch; gap:6px; }
+.who{ flex:none; align-self:center; font-size:14px; font-weight:800; color:#fff; background:var(--pc); border-radius:10px; padding:4px 8px; max-width:6.5em; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.strip{ flex:1; min-width:0; min-height:calc(var(--pic) * .8 + 30px); background:#fff; border:2px dashed var(--pc); border-radius:12px; padding:3px 6px; display:flex; align-items:center; gap:5px; overflow-x:auto; }
+.strip .hint{ color:#99a; font-size:13px; font-weight:700; white-space:nowrap; }
+.strip .it .pic{ height:calc(var(--pic) * .8); font-size:calc(var(--pic) * .65); }
+.strip .it .lbl{ font-size:calc(var(--lbl) - 2px); }
+.say{ flex:none; font-size:17px; font-weight:800; color:#fff; background:var(--pc); border:none; border-radius:12px; padding:0 14px; min-height:48px; white-space:nowrap; }
+.sq{ flex:none; width:44px; font-size:18px; font-weight:800; background:#fff; border:2px solid #cfd6e4; border-radius:12px; }
+.say:active,.sq:active,.card:active,.chip:active,.q:active{ transform:scale(.95); }
+.say:disabled{ opacity:.4; }
+
+/* ---- すぐ答える ---- */
+.quick{ flex:none; display:flex; gap:6px; }
+body[data-quick="0"] .quick{ display:none; }
+body[data-layout="side"] .quick{ flex-wrap:wrap; } body[data-layout="side"] .q{ flex:1 1 40%; }
+.q{ flex:1; min-width:0; display:flex; align-items:center; justify-content:center; gap:5px; background:#fff; border:2px solid var(--pl); border-radius:12px; padding:3px 4px; font-size:var(--lbl); font-weight:800; min-height:44px; }
+.q .pic{ height:32px; font-size:26px; flex:none; }
+.q span{ overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+
+/* ---- カテゴリ・カード ---- */
+.cats{ flex:none; display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+.cats::-webkit-scrollbar{ display:none; }
+.chip{ flex:none; display:flex; align-items:center; gap:4px; font-size:15px; font-weight:800; background:var(--c,#fff); border:3px solid transparent; border-radius:20px; padding:3px 11px 3px 6px; min-height:40px; white-space:nowrap; }
+.chip.sel{ border-color:#333; background:#fff; }
+.chip .pic{ height:28px; font-size:22px; }
+.grid{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; display:grid; grid-template-columns:repeat(auto-fill,minmax(var(--card-min),1fr)); gap:6px; align-content:start; padding:2px 2px 8px; }
+.card{ background:var(--c,#fff); border:2px solid #0002; border-radius:12px; padding:5px 2px 4px; display:flex; flex-direction:column; align-items:center; gap:2px; box-shadow:0 2px 0 #0002; }
+.card.on,.q.on{ outline:4px solid var(--pc); outline-offset:-2px; }
+.pic{ height:var(--pic); font-size:calc(var(--pic) * .82); line-height:1; display:flex; align-items:center; justify-content:center; }
+.pic svg,.pic img{ height:100%; width:auto; max-width:100%; object-fit:contain; border-radius:6px; display:block; }
+.lbl{ font-size:var(--lbl); font-weight:800; text-align:center; line-height:1.15; word-break:break-all; }
+body[data-text="0"] .grid .lbl{ display:none; }
+
+/* ---- 設定など ---- */
+dialog{ border:none; border-radius:18px; padding:0; width:min(560px,94vw); max-height:92vh; box-shadow:0 10px 40px #0006; user-select:text; -webkit-user-select:text; }
+dialog::backdrop{ background:#0006; }
+.dl{ padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+.dl h2{ margin:0; font-size:20px; }
+.row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.row>label:first-child,.row>b{ flex:none; width:8.5em; font-weight:800; font-size:15px; }
+.row input[type=text],.row select,#pinIn{ flex:1; min-width:0; font:inherit; font-size:17px; padding:8px 10px; border:2px solid #cfd6e4; border-radius:10px; }
+.row input[type=range]{ flex:1; }
+.seg{ display:flex; gap:6px; flex:1; }
+.seg label{ flex:1; text-align:center; font-weight:800; font-size:15px; padding:9px 4px; border:2px solid #cfd6e4; border-radius:12px; background:#fff; }
+.seg input{ position:absolute; opacity:0; pointer-events:none; }
+.seg label:has(input:checked){ background:#2b6cb0; color:#fff; border-color:#2b6cb0; }
+.btn{ font-size:16px; font-weight:800; padding:9px 14px; border-radius:12px; border:2px solid #cfd6e4; background:#fff; min-height:44px; text-decoration:none; color:#222; display:inline-flex; align-items:center; }
+.btn.pri{ background:#2b6cb0; color:#fff; border-color:#2b6cb0; }
+.btn.danger{ background:#fff0f0; color:#b00020; border-color:#f0b4b4; }
+.note{ font-size:13px; color:#667; line-height:1.5; margin:0; }
+#logList{ max-height:50vh; overflow-y:auto; border:2px solid #e3e7ef; border-radius:12px; padding:8px 10px; font-size:16px; line-height:1.7; }
+#logList .a{ color:#2b6cb0; font-weight:800; } #logList .b{ color:#c96a00; font-weight:800; } #logList time{ color:#99a; font-size:12px; margin-right:6px; }
+#toast{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:#222e; color:#fff; font-weight:700; padding:10px 16px; border-radius:12px; max-width:90vw; opacity:0; pointer-events:none; transition:opacity .2s; z-index:9; text-align:center; }
+#toast.show{ opacity:1; }
+</style>
+</head>
+<body data-layout="face" data-size="M">
+<section class="panel" id="pB" data-p="B"></section>
+<div id="mid"><button id="gear" aria-label="設定（長くおす）">⚙</button></div>
+<section class="panel" id="pA" data-p="A"></section>
+
+<dialog id="dlgSet"><div class="dl">
+  <h2>対話カードの設定</h2>
+  <div class="row"><b>画面の分け方</b><div class="seg">
+    <label><input type="radio" name="layout" value="face">向かい合わせ（上下）</label>
+    <label><input type="radio" name="layout" value="side">横ならび（左右）</label></div></div>
+  <p class="note">向かい合わせ：iPad を机に置いて、ふたりが向かい合って使います（上半分は向こう側から読める向き）。<br>横ならび：ふたりが同じ側にならんで使います。</p>
+  <div class="row"><label for="nameA" style="color:#2b6cb0">青の人の名前</label><input type="text" id="nameA" maxlength="8"></div>
+  <div class="row"><label for="pitchA" style="color:#2b6cb0">青の人の声の高さ</label><input type="range" id="pitchA" min="0.5" max="2" step="0.1"><button class="btn" data-test="A">▶ きく</button></div>
+  <div class="row"><label for="nameB" style="color:#c96a00">オレンジの人の名前</label><input type="text" id="nameB" maxlength="8"></div>
+  <div class="row"><label for="pitchB" style="color:#c96a00">オレンジの人の声の高さ</label><input type="range" id="pitchB" min="0.5" max="2" step="0.1"><button class="btn" data-test="B">▶ きく</button></div>
+  <div class="row"><b>カードの大きさ</b><div class="seg">
+    <label><input type="radio" name="size" value="S">小</label><label><input type="radio" name="size" value="M">中</label><label><input type="radio" name="size" value="L">大</label></div></div>
+  <div class="row"><b>すぐ答えるボタン</b><label style="font-weight:700"><input type="checkbox" id="quick"> 「はい・いいえ・わかりません・もういっかい」を出す</label></div>
+  <div class="row"><button class="btn" id="btnLog">📝 会話のきろく</button><button class="btn" id="btnNew">🔄 あたらしい会話</button><a class="btn" id="lnkCards">🗂 カードを作る・直す</a></div>
+  <p class="note">カードの追加・写真・録音・声の速さは「コミュニケーションカード」の先生モードで変えます（このアプリは同じカードを使います）。</p>
+  <div class="row" style="justify-content:flex-end"><button class="btn pri" id="btnSetClose">とじる</button></div>
+</div></dialog>
+
+<dialog id="dlgLog"><div class="dl">
+  <h2>会話のきろく</h2>
+  <div id="logList"></div>
+  <p class="note">きろくは、このアプリを閉じると消えます。</p>
+  <div class="row" style="justify-content:flex-end"><button class="btn danger" id="btnLogClear">きろくを消す</button><button class="btn pri" id="btnLogClose">とじる</button></div>
+</div></dialog>
+
+<dialog id="dlgPin"><form class="dl" method="dialog">
+  <h2>暗証番号</h2>
+  <input id="pinIn" type="password" inputmode="numeric" autocomplete="off">
+  <div class="row" style="justify-content:flex-end"><button class="btn" value="x">やめる</button><button class="btn pri" value="ok">OK</button></div>
+</form></dialog>
+<div id="toast"></div>
+
+<script>
+/*SYM-START（コミュニケーションカード.html と同じ絵。node build.js で写し直す）*/
+/* ===== 日本風シンボル（このアプリのためのオリジナル描画・SVG） ===== */
+const SYM=(()=>{
+const O='#333', SKIN='#FFDDC4', HAIR='#2a2a2a', W='#fff', RED='#e53935', BLUE='#1e6fd9';
+const st=`stroke="${O}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"`;
+const P=(d,fill='none',x='')=>`<path d="${d}" fill="${fill}" ${st} ${x}/>`;
+const C=(x,y,r,fill)=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" ${st}/>`;
+const E=(x,y,rx,ry,fill)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${fill}" ${st}/>`;
+const R=(x,y,w,h,rx,fill)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" fill="${fill}" ${st}/>`;
+const L=(d,c=O,w=2.5)=>`<path d="${d}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const F=(d,c)=>`<path d="${d}" fill="${c}"/>`;
+const T=(x,y,s,t,c=O)=>`<text x="${x}" y="${y}" font-size="${s}" font-weight="800" text-anchor="middle" fill="${c}" font-family="Hiragino Maru Gothic ProN,Hiragino Sans,BIZ UDPGothic,Meiryo,sans-serif">${t}</text>`;
+const G=(tr,s)=>`<g transform="${tr}">${s}</g>`;
+const limb=(d,c)=>`<path d="${d}" fill="none" stroke="${O}" stroke-width="12.5" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${c}" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+const hand=(x,y,r=5.5)=>C(x,y,r,SKIN);
+
+/* ---- 顔（中心0,0 半径20） ---- */
+const hairBack={
+  girl:P('M-24,-2 C-27,-28 27,-28 24,-2 L25,17 C21,20 17,18 16,13 L-16,13 C-17,18 -21,20 -25,17Z',HAIR),
+  woman:P('M-24,-2 C-27,-28 27,-28 24,-2 L27,24 C20,29 14,25 14,19 L-14,19 C-14,25 -20,29 -27,24Z',HAIR),
+  mom:C(0,-23,8,HAIR),
+};
+const hairFront={
+  boy:P('M-21,3 C-24,-24 24,-24 21,3 C19,-5 14,-9 8,-8 C3,-12 -4,-9 -8,-11 C-13,-8 -18,-4 -21,3Z',HAIR),
+  girl:P('M-21,0 C-22,-24 22,-24 21,0 C15,-8 8,-6 2,-9 C-4,-6 -12,-9 -21,0Z',HAIR),
+  woman:P('M-21,2 C-23,-25 23,-25 21,2 C16,-6 4,-12 -6,-7 C-12,-5 -17,-3 -21,2Z',HAIR),
+  man:P('M-21,-1 C-22,-25 22,-25 21,-1 C20,-8 16,-12 10,-12 C4,-11 -6,-15 -13,-11 C-18,-9 -20,-5 -21,-1Z',HAIR),
+  cap:P('M-22,-2 C-24,-26 24,-26 22,-2Z',RED)+L('M0,-21 L0,-3','#fff',2)+P('M-22,-2 L22,-2',''),
+  bandana:P('M-22,-1 C-24,-27 24,-27 22,-1Z','#fff')+P('M18,-6 L28,-2 L24,4Z','#fff'),
+};
+hairFront.mom=hairFront.woman;
+const EYES={
+  dot:`<circle cx="-7.5" cy="1" r="2.6" fill="${O}"/><circle cx="7.5" cy="1" r="2.6" fill="${O}"/>`,
+  happy:L('M-11,2 Q-7.5,-3 -4,2')+L('M4,2 Q7.5,-3 11,2'),
+  closed:L('M-11,0 Q-7.5,4 -4,0')+L('M4,0 Q7.5,4 11,0'),
+  half:L('M-11,1 L-4,1')+L('M4,1 L11,1')+`<circle cx="-7.5" cy="2.5" r="1.6" fill="${O}"/><circle cx="7.5" cy="2.5" r="1.6" fill="${O}"/>`,
+  wide:C(-7.5,0,3.8,W)+C(7.5,0,3.8,W)+`<circle cx="-7.5" cy="0" r="1.6" fill="${O}"/><circle cx="7.5" cy="0" r="1.6" fill="${O}"/>`,
+  pain:L('M-11,-3 L-5,1 L-11,5')+L('M11,-3 L5,1 L11,5'),
+  glasses:`<circle cx="-7.5" cy="1" r="2.2" fill="${O}"/><circle cx="7.5" cy="1" r="2.2" fill="${O}"/>`+`<circle cx="-7.5" cy="1" r="6" fill="none" stroke="${O}" stroke-width="2"/><circle cx="7.5" cy="1" r="6" fill="none" stroke="${O}" stroke-width="2"/>`+L('M-1.5,1 L1.5,1',O,2),
+};
+const BROWS={ sad:L('M-12,-6 L-4,-9')+L('M4,-9 L12,-6'), angry:L('M-12,-10 L-3,-5',O,3)+L('M3,-5 L12,-10',O,3), up:L('M-11,-8 Q-7.5,-11 -4,-8')+L('M4,-8 Q7.5,-11 11,-8') };
+const MOUTH={
+  smile:L('M-6,8 Q0,14 6,8'), open:P('M-7,7 Q0,18 7,7Z','#e05a5a'), frown:L('M-6,13 Q0,7 6,13'),
+  o:E(0,10.5,3,4,'#a33'), wavy:L('M-7,11 q1.75,-3 3.5,0 t3.5,0 t3.5,0 t3.5,0'), flat:L('M-5,10 L5,10'),
+  grit:R(-6,7,12,6,2,W)+L('M-6,10 L6,10',O,1.5), small:L('M-3,10 Q0,12 3,10'), none:'',
+  tongue:P('M-6,8 Q0,13 6,8Z','#e05a5a')+P('M-3,10 Q0,18 3,10Z','#ff8a80'),
+};
+const EXTRA={
+  blush:`<circle cx="-13" cy="7" r="3.5" fill="#ff8fa3" opacity=".6"/><circle cx="13" cy="7" r="3.5" fill="#ff8fa3" opacity=".6"/>`,
+  tears:P('M-9,5 Q-13,13 -9,15 Q-5,13 -9,5Z','#6ec6ff')+P('M9,5 Q5,13 9,15 Q13,13 9,5Z','#6ec6ff'),
+  anger:G('translate(15,-15)',`<path d="M-5,-2 Q-2,-2 -2,-5 M2,-5 Q2,-2 5,-2 M5,2 Q2,2 2,5 M-2,5 Q-2,2 -5,2" fill="none" stroke="${RED}" stroke-width="2.5" stroke-linecap="round"/>`)+`<circle cx="0" cy="3" r="20" fill="#ff5252" opacity=".12"/>`,
+  fear:L('M-7,-17 L-7,-10','#5c7cfa',2)+L('M0,-18 L0,-11','#5c7cfa',2)+L('M7,-17 L7,-10','#5c7cfa',2),
+  sweat:P('M18,-12 Q14,-4 18,-2 Q22,-4 18,-12Z','#9ad7ff'),
+  fever:`<circle cx="-12" cy="7" r="5" fill="#ff5252" opacity=".5"/><circle cx="12" cy="7" r="5" fill="#ff5252" opacity=".5"/>`+L('M-6,-12 L-3,-15 L0,-12 L3,-15 L6,-12','#e53935',2),
+  mask:P('M-14,3 Q0,1 14,3 L13,15 Q0,20 -13,15Z',W)+L('M-6,8 L6,8','#bbb',1.5)+L('M-6,12 L6,12','#bbb',1.5)+L('M-14,4 L-20,0',O,1.5)+L('M14,4 L20,0',O,1.5),
+  plaster:G('translate(11,9) rotate(-30)',R(-7,-3,14,6,2.5,'#f3c58f')+`<rect x="-2.5" y="-2" width="5" height="4" fill="#e9a96b"/>`),
+  none:'',
+};
+const FACE={
+  smile:['dot','','smile','blush'], happy:['happy','','open','blush'], laugh:['happy','up','open','blush'],
+  sad:['dot','sad','frown','tears'], angry:['dot','angry','grit','anger'], scared:['wide','sad','wavy','fear'],
+  tired:['half','sad','wavy','sweat'], pain:['pain','sad','wavy','sweat'], sleepy:['half','','small','none'],
+  sleep:['closed','','small','none'], surprise:['wide','up','o','none'], neutral:['dot','','flat','none'],
+  worried:['dot','sad','wavy','sweat'], dislike:['dot','angry','frown','none'], fever:['half','sad','wavy','fever'],
+  mask:['dot','sad','none','mask'], puzzled:['dot','up','flat','none'], hurt:['dot','sad','frown','plaster'],
+  thirsty:['half','sad','tongue','sweat'], teacher:['glasses','','smile','none'], glad:['glasses','','smile','blush'],
+};
+function head(expr='smile',hair='boy'){
+  const [e,b,m,x]=FACE[expr]||FACE.smile;
+  return (hairBack[hair]||'')+C(-20,2,4,SKIN)+C(20,2,4,SKIN)+C(0,0,20,SKIN)+(hairFront[hair]||'')+(EYES[e]||'')+(BROWS[b]||'')+(MOUTH[m]||'')+(EXTRA[x]||'');
+}
+const face=(expr,hair='boy',tr='translate(50,52) scale(1.85)')=>G(tr,head(expr,hair));
+
+/* ---- 子ども・大人（上半身） ---- */
+const palm=(x,y,s=1)=>G(`translate(${x},${y}) scale(${s*0.85})`,P('M-12,6 Q-21,-4 -23,0 Q-25,5 -16,14 L-11,18Z',SKIN)+P('M-12,18 L-12,-12 Q-12,-17 -8.5,-17 Q-5,-17 -5,-12 L-5,-19 Q-5,-24 -1.5,-24 Q2,-24 2,-19 L2,-17 Q2,-22 5.5,-22 Q9,-22 9,-17 L9,-11 Q9,-15 12,-15 Q15,-15 15,-11 L15,8 Q15,22 2,22 L-6,22 Q-12,22 -12,18Z',SKIN)+L('M-5,-12 L-5,-2',O,1.8)+L('M2,-17 L2,-2',O,1.8)+L('M9,-11 L9,-1',O,1.8));
+const POSE={
+  down:'',
+  raiseL:limb('M31,72 Q20,52 22,26','S')+hand(22,22),
+  waveL:limb('M31,72 Q14,60 17,40','S')+hand(17,36)+L('M8,28 Q5,36 8,44','#888',2)+L('M3,24 Q-1,36 3,48','#888',2),
+  waveR:limb('M69,72 Q86,60 83,40','S')+hand(83,36)+L('M92,28 Q95,36 92,44','#888',2)+L('M97,24 Q101,36 97,48','#888',2),
+  gassho:limb('M32,74 Q38,92 47,82','S')+limb('M68,74 Q62,92 53,82','S')+P('M44,86 Q43,70 50,60 Q57,70 56,86Z',SKIN)+L('M50,63 L50,86',O,1.5),
+  tummy:limb('M32,74 Q30,93 44,90','S')+limb('M68,74 Q70,93 56,90','S')+hand(44,89)+hand(56,89),
+  head:limb('M31,72 Q12,58 25,40','S')+limb('M69,72 Q88,58 75,40','S')+hand(27,37)+hand(73,37),
+  maru:limb('M31,70 Q4,34 42,11','S')+limb('M69,70 Q96,34 58,11','S')+hand(45,10)+hand(55,10),
+  batsu:limb('M31,76 L66,57','S')+limb('M69,76 L34,57','S')+hand(67,55)+hand(33,55),
+  ear:limb('M69,72 Q88,60 77,42','S')+hand(75,39,6),
+  self:limb('M31,74 Q34,92 47,80','S')+hand(48,79),
+  palm:limb('M69,74 Q84,74 76,62','S')+palm(76,52,1),
+  reach:limb('M32,74 Q30,94 40,90','S')+limb('M68,74 Q70,94 60,90','S')+P('M35,86 Q50,100 65,86 Q50,92 35,86Z',SKIN),
+  flex:limb('M69,72 Q90,72 84,50','S')+hand(84,46,6.5),
+  eat:limb('M31,74 Q30,90 38,86','S')+P('M28,80 Q38,96 50,80Z','#3f6fb5')+F('M30,80 Q39,72 48,80Z','#fff')+limb('M69,74 Q76,72 62,62','S')+hand(62,62)+L('M60,60 L52,51',`#8d5524`,2.2)+L('M64,59 L55,50','#8d5524',2.2),
+  drink:limb('M69,74 Q78,74 64,62','S')+G('translate(58,52) rotate(-25)',R(-7,-9,14,18,3,'#cfeeff'))+hand(64,62),
+  reachL:limb('M31,72 Q20,68 8,66','S')+hand(7,66),
+  reachR:limb('M69,72 Q80,68 92,66','S')+hand(93,66),
+  run:limb('M31,72 Q18,66 22,52','S')+hand(22,50)+limb('M69,72 Q80,84 88,80','S')+hand(89,79),
+};
+function kid(o={}){
+  const shirt=o.shirt||'#5b9bd5', hair=o.hair||'boy';
+  const body=P('M20,100 C20,70 32,59 50,59 C68,59 80,70 80,100Z',shirt);
+  const pose=(POSE[o.pose||'down']||'').replace(/stroke="S"/g,`stroke="${shirt}"`).split("'S'").join(shirt);
+  const hd=G(`translate(50,38)${o.tilt?` rotate(${o.tilt})`:''}`,head(o.expr||'smile',hair));
+  return (o.back||'')+body+(o.chest||'')+hd+pose+(o.front||'');
+}
+// limb() で 'S' を袖の色にする
+const _limb=limb;
+function K(o){ const s=kid(o); return s; }
+const kidAt=(o,tr)=>G(tr,K(o));
+
+/* ---- お辞儀（横向き） ---- */
+function bow(deg,o={}){
+  const shirt=o.shirt||'#5b9bd5', a=-deg*Math.PI/180, hip=[66,80];
+  const rot=(x,y)=>[hip[0]+x*Math.cos(a)-y*Math.sin(a), hip[1]+x*Math.sin(a)+y*Math.cos(a)];
+  const sh=rot(0,-30);
+  const legs=_limb('M64,80 L62,98','#33476d')+_limb('M70,80 L72,98','#33476d');
+  const torso=G(`translate(${hip[0]},${hip[1]}) rotate(${-deg})`,R(-12,-36,24,40,11,shirt)+G('translate(0,-50)',
+    C(0,0,15,SKIN)+P('M-15,-3 A15,15 0 0,1 12,9 Q7,6 5,0 Q-3,-7 -15,-3Z',HAIR)+C(3,3,3.5,SKIN)+L('M-11,3 Q-9,5 -6,4',O,2)+`<circle cx="-10" cy="9" r="2.6" fill="#ff8fa3" opacity=".6"/>`));
+  const arm=_limb(`M${sh[0]},${sh[1]} L${sh[0]-2},${sh[1]+22}`,shirt)+hand(sh[0]-2,sh[1]+24,4.5);
+  return legs+torso+arm+(o.extra||'');
+}
+
+/* ---- もの ---- */
+const chopsticks=(tr)=>G(tr,L('M0,0 L36,-16','#8d5524',3.2)+L('M2,6 L38,-8','#8d5524',3.2));
+const bowl=(fill='#3f6fb5',rice=true)=>(rice?P('M-26,0 Q-22,-20 0,-20 Q22,-20 26,0Z','#fff')+`<g fill="#ddd"><ellipse cx="-8" cy="-12" rx="2" ry="1.2"/><ellipse cx="4" cy="-15" rx="2" ry="1.2"/><ellipse cx="10" cy="-8" rx="2" ry="1.2"/><ellipse cx="-14" cy="-5" rx="2" ry="1.2"/></g>`:'')
+  +P('M-28,0 Q-24,26 0,26 Q24,26 28,0Z',fill)+L('M-20,10 Q0,16 20,10','#fff',2)+R(-9,24,18,5,2,fill);
+const sun=(x,y,r)=>{ let s=''; for(let i=0;i<8;i++){ const a=i*Math.PI/4; s+=L(`M${x+Math.cos(a)*(r+4)},${y+Math.sin(a)*(r+4)} L${x+Math.cos(a)*(r+10)},${y+Math.sin(a)*(r+10)}`,'#ff9800',3.5); } return s+C(x,y,r,'#ffb300'); };
+const house=(tr='')=>G(tr,R(22,46,56,40,2,'#fff3e0')+P('M14,50 L50,18 L86,50Z','#c0392b')+R(44,62,14,24,2,'#a0522d')+R(28,56,12,12,1,'#bfe3ff')+R(62,56,12,12,1,'#bfe3ff'));
+const heart=(x,y,s,c='#ff5c8a')=>G(`translate(${x},${y}) scale(${s})`,P('M0,6 C-12,-2 -10,-12 -4,-12 C-1,-12 0,-9 0,-8 C0,-9 1,-12 4,-12 C10,-12 12,-2 0,6Z',c));
+const clock=(x,y,r)=>C(x,y,r,'#fff')+L(`M${x},${y} L${x},${y-r*0.6}`,O,2.5)+L(`M${x},${y} L${x+r*0.45},${y+r*0.2}`,O,2.5)+`<circle cx="${x}" cy="${y}" r="1.8" fill="${O}"/>`;
+const ball=(x,y,r)=>C(x,y,r,'#ff7043')+L(`M${x-r},${y} Q${x},${y-r*0.4} ${x+r},${y}`,O,1.8)+L(`M${x},${y-r} Q${x+r*0.4},${y} ${x},${y+r}`,O,1.8);
+const randoseru=(tr)=>G(tr,R(-22,-24,44,50,10,'#c62828')+P('M-22,-6 Q0,-12 22,-6 L22,-20 Q22,-26 14,-26 L-14,-26 Q-22,-26 -22,-20Z','#b71c1c')+R(-5,-6,10,6,2,'#ffd54f'));
+const toiletPicto=G('translate(0,0)',`<g fill="${BLUE}"><circle cx="32" cy="24" r="8"/><rect x="23" y="35" width="18" height="30" rx="5"/><rect x="24" y="60" width="7" height="26" rx="3"/><rect x="33" y="60" width="7" height="26" rx="3"/></g><g fill="${RED}"><circle cx="68" cy="24" r="8"/><path d="M68,34 C62,34 60,40 58,46 L54,66 L82,66 L78,46 C76,40 74,34 68,34Z"/><rect x="61" y="62" width="6" height="24" rx="3"/><rect x="69" y="62" width="6" height="24" rx="3"/></g>`+L('M50,16 L50,88','#999',2));
+const toiletBowl=R(30,12,40,24,5,'#fff')+P('M22,42 Q22,36 30,36 L70,36 Q78,36 78,42 Q78,64 56,70 L58,88 L42,88 L44,70 Q22,64 22,42Z','#fff')+E(50,42,22,6,'#cfe8ff')+R(36,86,28,6,2,'#fff');
+const qmark=(x,y,s,c='#7e57c2')=>T(x,y,s,'?',c);
+const arrowR=(c)=>P('M14,42 L58,42 L58,28 L86,50 L58,72 L58,58 L14,58Z',c);
+
+const D={
+  maru:['まる（はい）',`<circle cx="50" cy="50" r="33" fill="none" stroke="${RED}" stroke-width="13"/>`],
+  batsu:['ばつ（いいえ）',L('M23,23 L77,77',BLUE,14)+L('M77,23 L23,77',BLUE,14)],
+  toilet:['トイレ',toiletPicto],
+  toiletbowl:['トイレ（べんき）',toiletBowl],
+  tasukete:['たすけて',K({pose:'raiseL',expr:'worried',hair:'girl',shirt:'#f48fb1'})+T(82,34,30,'!','#e53935')],
+  matte:['まって',palm(50,52,2.25)],
+  owari:['おわり',R(22,14,56,76,6,'#f5deb3')+R(38,8,24,14,4,'#bdbdbd')+L('M34,54 L46,68 L68,36',RED,8)],
+  mouikkai:['もういっかい',(()=>{ const cx=50,cy=52,r=28,a0=-60*Math.PI/180,a1=a0+285*Math.PI/180; const p=a=>[cx+r*Math.cos(a),cy+r*Math.sin(a)]; const [x0,y0]=p(a0),[x1,y1]=p(a1); const tx=-Math.sin(a1),ty=Math.cos(a1),nx=Math.cos(a1),ny=Math.sin(a1);
+    return L(`M${x0},${y0} A${r},${r} 0 1 1 ${x1},${y1}`,'#ff9800',10)+`<path d="M${x1+tx*14},${y1+ty*14} L${x1+nx*12},${y1+ny*12} L${x1-nx*12},${y1-ny*12}Z" fill="#ff9800"/>`+T(50,63,30,'1'); })()],
+  wakaranai:['わからない',K({expr:'puzzled',tilt:-14,shirt:'#81c784'})+qmark(82,40,40)],
+  ohayou:['おはよう',P('M0,72 Q25,58 50,70 Q75,58 100,72 L100,100 L0,100Z','#a5d6a7','stroke="none"')+sun(78,30,12)+kidAt({pose:'waveL',expr:'happy'},'translate(4,22) scale(.78)')],
+  konnichiwa:['こんにちは',K({pose:'waveR',expr:'happy',hair:'girl',shirt:'#ffb74d'})],
+  sayounara:['さようなら',K({pose:'waveR',expr:'smile',back:R(20,56,60,34,9,'#c62828'),chest:L('M36,62 L34,100','#b71c1c',6)+L('M64,62 L66,100','#b71c1c',6)})],
+  arigatou:['ありがとう',bow(45,{extra:EXTRA.none+G('translate(14,22)',L('M0,6 L4,0 L8,6',`#ff9800`,2.5))})],
+  gomen:['ごめんなさい',bow(70,{shirt:'#90a4ae',extra:P('M16,30 Q12,38 16,40 Q20,38 16,30Z','#9ad7ff')+P('M24,22 Q21,28 24,30 Q27,28 24,22Z','#9ad7ff')})],
+  onegai:['おねがいします',K({pose:'gassho',expr:'sleep',hair:'girl',shirt:'#ba68c8'})],
+  itadakimasu:['いただきます',kidAt({pose:'gassho',expr:'happy'},'translate(14,0) scale(.72)')+G('translate(50,74) scale(.8)',bowl())+chopsticks('translate(22,96) rotate(-4)')],
+  gochisou:['ごちそうさま',kidAt({pose:'gassho',expr:'smile',hair:'girl',shirt:'#f48fb1'},'translate(14,0) scale(.72)')+G('translate(50,78) scale(.8)',bowl('#3f6fb5',false))+L('M24,78 L76,78','#8d5524',3)+L('M24,82 L76,82','#8d5524',3)],
+  oyasumi:['おやすみ',`<path d="M70,12 A14,14 0 1 0 86,30 A11,11 0 1 1 70,12Z" fill="#ffe082" stroke="${O}" stroke-width="2"/>`+R(6,62,88,26,6,'#e3f2fd')+R(12,48,26,16,8,'#fff')+G('translate(26,48) scale(.62)',head('sleep','boy'))+P('M32,58 Q60,50 94,60 L94,88 L32,88Z','#f8bbd0')+`<g fill="#fff"><circle cx="50" cy="70" r="3"/><circle cx="66" cy="66" r="3"/><circle cx="80" cy="76" r="3"/><circle cx="60" cy="80" r="3"/></g>`+T(48,36,14,'Z z','#5c6bc0')],
+  otsukare:['おつかれさま',K({expr:'happy',shirt:'#4db6ac',chest:P('M34,62 Q50,72 66,62 L68,70 Q50,80 32,70Z','#fff')})+EXTRA.sweat.replace('M18,-12','M74,24').replace('Q14,-4 18,-2 Q22,-4 18,-12','Q70,32 74,34 Q78,32 74,24')],
+  ureshii:['うれしい',face('happy','girl')],
+  tanoshii:['たのしい',face('laugh','boy','translate(46,54) scale(1.75)')+T(84,30,22,'♪','#ff7043')+T(16,26,18,'♪','#42a5f5')],
+  kanashii:['かなしい',face('sad','boy')],
+  okotteru:['おこってる',face('angry','boy')],
+  kowai:['こわい',face('scared','girl')],
+  tsukareta:['つかれた',face('tired','boy')],
+  itai:['いたい',face('pain','boy')+L('M10,30 L4,24 M12,22 L8,14 M90,30 L96,24 M88,22 L92,14',RED,3)],
+  nemui:['ねむい',face('sleepy','girl','translate(46,56) scale(1.75)')+T(84,30,20,'Z z','#5c6bc0')],
+  bikkuri:['びっくり',face('surprise','boy','translate(46,56) scale(1.75)')+T(86,40,34,'!',RED)],
+  iya:['いや',K({pose:'batsu',expr:'dislike',hair:'girl',shirt:'#9575cd'})],
+  suki:['すき',face('happy','girl','translate(44,56) scale(1.6)')+heart(80,26,1.6)],
+  kirai:['きらい',face('dislike','boy','translate(44,56) scale(1.6)')+G('translate(80,24) scale(.9)',`<path d="M0,6 C-12,-2 -10,-12 -4,-12 C-1,-12 0,-9 0,-8 C0,-9 1,-12 4,-12 C10,-12 12,-2 0,6Z" fill="#90a4ae" stroke="${O}" stroke-width="2.5"/>`+L('M1,-10 L-3,-3 L3,0 L-1,6',O,2))],
+  tabetai:['たべたい',K({pose:'eat',expr:'happy'})],
+  nomitai:['のみたい',K({pose:'drink',expr:'sleep',hair:'girl',shirt:'#4fc3f7'})],
+  asobitai:['あそびたい',kidAt({pose:'waveL',expr:'happy'},'translate(0,8) scale(.82)')+ball(78,74,15)],
+  yasumitai:['やすみたい',R(8,38,84,42,10,'#bcaaa4')+kidAt({expr:'tired',shirt:'#ffb74d'},'translate(14,0) scale(.72)')+R(4,72,92,20,6,'#8d6e63')+R(2,52,16,40,7,'#8d6e63')+R(82,52,16,40,7,'#8d6e63')+T(80,26,16,'…','#666')],
+  kaeritai:['かえりたい',house('translate(24,4) scale(.75)')+P('M6,80 L44,80 L44,72 L60,86 L44,100 L44,92 L6,92Z','#43a047')],
+  ikitai:['いきたい',kidAt({expr:'smile',shirt:'#81c784'},'translate(-4,10) scale(.8)')+G('translate(36,22) scale(.7)',arrowR('#43a047'))],
+  mitai:['みたい',P('M8,50 Q50,8 92,50 Q50,92 8,50Z','#fff')+C(50,50,16,'#6d4c41')+`<circle cx="50" cy="50" r="7" fill="${O}"/><circle cx="55" cy="45" r="3" fill="#fff"/>`],
+  kikitai:['ききたい',K({pose:'ear',expr:'smile',hair:'girl',shirt:'#f06292'})+L('M86,30 Q92,40 86,50','#888',2.5)+L('M92,24 Q100,40 92,56','#888',2.5)],
+  tetsudatte:['てつだって',kidAt({pose:'reachR',expr:'worried',shirt:'#ffb74d'},'translate(-12,18) scale(.66)')+kidAt({pose:'reachL',expr:'teacher',hair:'woman',shirt:'#43a047'},'translate(44,8) scale(.72)')],
+  hoshii:['ほしい',K({pose:'reach',expr:'smile',hair:'girl',shirt:'#aed581'})],
+  yaritai:['やりたい',K({pose:'raiseL',expr:'happy',shirt:'#ffca28'})+T(80,32,22,'はい','#e53935')],
+  yametai:['やめたい',K({pose:'palm',expr:'sad',shirt:'#90a4ae'})],
+  gohan:['ごはん',G('translate(50,52)',bowl())+chopsticks('translate(30,92) rotate(-8)')],
+  pan:['パン',P('M22,40 C14,16 40,12 50,20 C60,12 86,16 78,40 L76,86 L24,86Z','#e0a55b')+P('M28,42 C24,26 42,24 50,30 C58,24 76,26 72,42 L70,80 L30,80Z','#fff3d6','stroke="none"')],
+  onigiri:['おにぎり',P('M50,12 C58,12 92,64 86,78 C82,88 18,88 14,78 C8,64 42,12 50,12Z','#fff')+R(34,60,32,26,2,'#1b3a2a')],
+  mizu:['みず',P('M28,18 L72,18 L66,88 L34,88Z','#e3f6ff')+P('M31,40 L69,40 L66,88 L34,88Z','#81d4fa')+L('M38,50 L37,74','#fff',3)],
+  ocha:['おちゃ',L('M42,20 Q38,12 42,6','#bbb',2.5)+L('M56,20 Q52,12 56,6','#bbb',2.5)+P('M24,28 L76,28 L72,82 Q50,90 28,82Z','#5b8c5a')+E(50,28,26,6,'#a5d6a7')+L('M30,52 L70,52','#3e6b3d',2)],
+  juice:['ジュース',R(28,26,40,62,4,'#ffb74d')+P('M28,26 L36,16 L76,16 L68,26Z','#ffcc80')+P('M68,26 L76,16 L76,78 L68,88Z','#fb8c00')+C(48,58,11,'#ff9800')+L('M60,18 L66,4','#e91e63',3)],
+  gyunyu:['ぎゅうにゅう',R(28,34,44,56,3,'#fff')+P('M28,34 L36,16 L64,16 L72,34Z','#e3f2fd')+R(40,10,20,7,1,'#fff')+R(28,48,44,22,1,'#42a5f5')+T(50,65,14,'牛乳','#fff')],
+  okashi:['おかし',L('M24,90 L80,14','#c8a165',4)+C(36,74,12,'#a5d6a7')+C(50,55,12,'#fff')+C(64,36,12,'#f8bbd0')],
+  kudamono:['くだもの',C(36,58,22,'#ff9800')+L('M30,48 Q36,44 42,48','#e65100',1.6)+P('M36,36 Q44,28 50,34 Q42,40 36,36Z','#66bb6a')+C(70,46,16,'#e53935')+L('M70,30 L72,22','#6d4c41',3)+P('M72,28 Q82,20 86,26 Q78,32 72,28Z','#66bb6a')],
+  yasai:['やさい',P('M26,30 L46,30 L38,92Z','#ff8f00')+L('M30,44 L36,44','#e65100',2)+L('M33,60 L40,60','#e65100',2)+P('M30,30 Q24,14 34,18 Q36,8 40,20 Q48,12 44,30Z','#66bb6a')+P('M56,36 Q56,30 66,30 Q76,30 76,36 L72,90 Q66,96 60,90Z','#fff')+P('M58,36 Q50,14 62,22 Q66,8 70,24 Q80,12 76,36Z','#7cb342')],
+  curry:['カレー',E(50,62,42,24,'#fff')+P('M14,62 Q14,46 44,44 L50,82 Q16,80 14,62Z','#fffdf5')+P('M46,44 Q86,44 86,62 Q86,80 52,82Z','#b5651d')+C(66,58,4,'#ff9800')+C(74,68,4,'#ffeb3b')+C(58,70,4,'#ff9800')+L('M70,20 L52,44','#9e9e9e',4)],
+  ramen:['ラーメン',P('M10,46 L90,46 Q88,86 50,88 Q12,86 10,46Z','#e53935')+E(50,46,40,10,'#ffe082')+L('M24,46 Q30,40 36,46 T48,46 T60,46 T72,46','#f9a825',2)+C(64,44,6,'#fff')+L('M61,44 Q64,40 67,44','#f06292',1.6)+R(28,32,12,14,1,'#1b3a2a')+L('M18,62 L82,62','#fff',2)+L('M58,8 L44,44','#8d5524',3)+L('M66,10 L50,44','#8d5524',3)],
+  atamaitai:['あたまがいたい',K({pose:'head',expr:'pain'})+L('M6,22 L14,28 M10,12 L16,22 M94,22 L86,28 M90,12 L84,22',RED,3)],
+  onakaitai:['おなかがいたい',K({pose:'tummy',expr:'pain',hair:'girl',shirt:'#f48fb1'})+L('M26,82 L18,78 M74,82 L82,78 M50,96 L50,100',RED,3)],
+  netsu:['ねつがある',face('fever','boy','translate(42,56) scale(1.6)')+R(80,14,10,56,5,'#fff')+C(85,74,8,RED)+R(83,34,4,38,2,RED)],
+  kaze:['かぜをひいた',face('mask','girl')],
+  kega:['けがをした',face('hurt','boy')],
+  nodo:['のどがかわいた',face('thirsty','boy','translate(42,56) scale(1.6)')+G('translate(58,10) scale(.42)',P('M28,18 L72,18 L66,88 L34,88Z','#e3f6ff')+P('M31,40 L69,40 L66,88 L34,88Z','#81d4fa'))],
+  onakasuita:['おなかがすいた',kidAt({pose:'tummy',expr:'worried'},'translate(0,14) scale(.86)')+C(74,22,18,'#fff')+C(56,44,4,'#fff')+G('translate(74,22) scale(.32)',P('M50,12 C58,12 92,64 86,78 C82,88 18,88 14,78 C8,64 42,12 50,12Z','#fff').replace('M50','M0').replace(/(-?\d+),(-?\d+)/g,(m,a,b)=>`${a-50},${b-50}`)+R(-16,10,32,26,2,'#1b3a2a'))],
+  kusuri:['くすり',P('M14,30 L54,30 L60,82 L8,82Z','#fff')+L('M14,40 L54,40','#64b5f6',3)+T(34,66,14,'くすり','#1e88e5')+G('translate(74,58) rotate(-35)',R(-9,-20,18,40,9,'#fff')+`<path d="M-9,0 L9,0 L9,11 A9,9 0 0 1 -9,11Z" fill="#ef5350" stroke="${O}" stroke-width="2.5"/>`)],
+  hokenshitsu:['ほけんしつ',R(8,56,60,18,4,'#fff')+R(8,46,18,12,6,'#e3f2fd')+R(8,74,6,18,2,'#bdbdbd')+R(62,74,6,18,2,'#bdbdbd')+R(66,22,28,24,4,'#fff')+`<path d="M77,26 h6 v7 h7 v6 h-7 v7 h-6 v-7 h-7 v-6 h7Z" fill="${RED}"/>`],
+  sensei:['せんせい',K({expr:'teacher',hair:'woman',shirt:'#43a047',chest:L('M50,60 L50,100','#fff',3)+C(58,72,3,'#ffd54f')})],
+  okaasan:['おかあさん',K({expr:'smile',hair:'mom',shirt:'#ffb74d',chest:P('M34,70 L66,70 L70,100 L30,100Z','#f8bbd0')+L('M34,70 Q50,64 66,70',O,2)})],
+  otousan:['おとうさん',K({expr:'smile',hair:'man',shirt:'#607d8b',chest:P('M40,60 L50,74 L60,60Z','#fff')+P('M48,64 L52,64 L54,92 L50,98 L46,92Z','#1e6fd9')})],
+  tomodachi:['ともだち',kidAt({expr:'happy',shirt:'#5b9bd5'},'translate(-6,14) scale(.66)')+kidAt({expr:'happy',hair:'girl',shirt:'#f48fb1'},'translate(40,14) scale(.66)')],
+  watashi:['わたし',K({pose:'self',expr:'smile',hair:'girl',shirt:'#ffb74d'})],
+  anata:['あなた',kidAt({expr:'smile',shirt:'#90caf9'},'translate(44,14) scale(.66)')+_limb('M-8,66 L16,64','#bdbdbd')+R(14,54,18,22,7,SKIN)+R(28,58,24,8,4,SKIN)+L('M18,66 L28,66',O,1.6)],
+  minna:['みんな',kidAt({expr:'smile',hair:'girl',shirt:'#f48fb1'},'translate(-4,0) scale(.5)')+kidAt({expr:'smile',shirt:'#81c784'},'translate(25,0) scale(.5)')+kidAt({expr:'smile',hair:'girl',shirt:'#ffb74d'},'translate(54,0) scale(.5)')+kidAt({expr:'smile',shirt:'#5b9bd5'},'translate(10,48) scale(.5)')+kidAt({expr:'smile',hair:'boy',shirt:'#ba68c8'},'translate(40,48) scale(.5)')],
+  kazoku:['かぞく',kidAt({expr:'smile',hair:'man',shirt:'#607d8b'},'translate(-6,10) scale(.6)')+kidAt({expr:'smile',hair:'mom',shirt:'#ffb74d'},'translate(46,10) scale(.6)')+kidAt({expr:'happy',hair:'girl',shirt:'#f48fb1'},'translate(10,48) scale(.48)')+kidAt({expr:'happy',shirt:'#5b9bd5'},'translate(42,48) scale(.48)')],
+  kyoshitsu:['きょうしつ',R(8,10,84,50,3,'#2e7d32')+R(4,58,92,6,2,'#8d6e63')+T(40,40,16,'あいう','#fff')+L('M70,30 L82,46','#fff',2)+R(26,72,48,10,2,'#d7a86e')+R(30,82,6,16,1,'#bdbdbd')+R(64,82,6,16,1,'#bdbdbd')],
+  taiikukan:['たいいくかん',P('M8,92 L8,44 Q50,8 92,44 L92,92Z','#ffe0b2')+R(40,62,20,30,2,'#a0522d')+R(16,52,14,12,1,'#bfe3ff')+R(70,52,14,12,1,'#bfe3ff')+ball(50,40,9)],
+  toshoshitsu:['としょしつ',R(10,10,80,84,3,'#a1887f')+R(14,14,72,36,1,'#fff8e1')+R(14,54,72,36,1,'#fff8e1')+[['#e53935',16,9],['#1e88e5',26,8],['#43a047',35,10],['#fdd835',46,8],['#8e24aa',55,9],['#fb8c00',65,8]].map(([c,x,w])=>R(x,20,w,30,1,c)).join('')+[['#43a047',16,10],['#e53935',27,8],['#1e88e5',36,9],['#fb8c00',60,9],['#8e24aa',70,8]].map(([c,x,w])=>R(x,60,w,30,1,c)).join('')+G('translate(48,90) rotate(-20)',R(0,-30,9,30,1,'#fdd835'))],
+  shokudo:['しょくどう',R(6,62,88,10,3,'#d7a86e')+R(14,72,6,24,1,'#a1887f')+R(80,72,6,24,1,'#a1887f')+G('translate(32,50) scale(.5)',bowl())+G('translate(68,50) scale(.5)',bowl('#c62828'))+L('M40,22 Q36,14 40,6','#bbb',2.5)+L('M60,22 Q56,14 60,6','#bbb',2.5)],
+  uchi:['うち',house()],
+  kotei:['こうてい',P('M0,80 L100,80 L100,100 L0,100Z','#d7b98e','stroke="none"')+R(10,30,80,50,2,'#f5f5f5')+R(38,14,24,20,2,'#f5f5f5')+clock(50,24,7)+[18,34,58,74].map(x=>R(x,40,10,10,1,'#bfe3ff')).join('')+[18,34,58,74].map(x=>R(x,58,10,10,1,'#bfe3ff')).join('')+R(44,58,12,22,1,'#a0522d')],
+  bus:['バス',R(6,24,88,52,9,'#fff')+P('M6,52 L94,52 L94,66 Q94,76 84,76 L16,76 Q6,76 6,66Z','#43a047')+[14,32,50].map(x=>R(x,32,14,14,2,'#bfe3ff')).join('')+R(70,32,18,30,2,'#bfe3ff')+C(26,78,9,'#555')+C(74,78,9,'#555')+C(26,78,3,'#ddd')+C(74,78,3,'#ddd')],
+  densha:['でんしゃ',P('M8,26 L86,26 Q96,26 96,40 L96,78 L8,78Z','#eceff1')+R(8,62,88,8,0,'#7cb342')+[14,34,54].map(x=>R(x,34,14,18,2,'#bfe3ff')).join('')+R(76,34,14,18,2,'#bfe3ff')+L('M0,88 L100,88','#555',3)+C(24,82,6,'#555')+C(46,82,6,'#555')+C(70,82,6,'#555')+L('M40,26 L50,10 L60,26','#555',2)],
+  benkyo:['べんきょう',P('M8,26 L50,32 L92,26 L92,84 L50,90 L8,84Z','#fff')+L('M50,32 L50,90',O,2.5)+[42,52,62,72].map(y=>L(`M16,${y} L42,${y+3}`,'#90caf9',2)+L(`M58,${y+3} L84,${y}`,'#90caf9',2)).join('')+G('translate(70,46) rotate(40)',R(-4,-34,8,46,1,'#ffca28')+P('M-4,12 L4,12 L0,22Z','#ffe0b2')+`<path d="M-1.5,18 L1.5,18 L0,22Z" fill="${O}"/>`)],
+  undou:['うんどう',K({pose:'run',expr:'happy',hair:'cap',shirt:'#fff',chest:R(42,70,16,10,1,'#fff')+T(50,78,7,'1-2')})],
+  ongaku:['おんがく',E(42,72,32,13,'#1e88e5')+E(42,58,32,13,RED)+L('M10,64 Q4,66 10,72',O,3)+T(80,40,30,'♪','#7e57c2')+T(62,26,22,'♫','#ff7043')],
+  ekaku:['えをかく',P('M10,52 C10,22 44,10 66,18 C90,28 92,56 76,64 C66,70 66,56 56,62 C46,70 60,88 40,88 C20,88 10,74 10,52Z','#f3d9a4')+C(30,42,6,RED)+C(48,30,6,'#fdd835')+C(68,34,6,'#43a047')+C(28,64,6,'#1e88e5')+G('translate(70,66) rotate(40)',R(-3,-34,6,36,1,'#8d6e63')+P('M-4,2 L4,2 L5,12 Q0,20 -5,12Z','#1e88e5'))],
+  souji:['そうじ',L('M30,8 L36,62','#c8a165',5)+P('M24,60 L46,58 L56,92 L16,96Z','#e6c86e')+L('M24,72 L50,70 M22,82 L53,80','#bfa046',2)+P('M60,70 L94,62 L94,92 L60,92Z','#90caf9')+L('M76,66 L84,42','#555',4)],
+  kyushoku:['きゅうしょく',R(4,30,92,62,6,'#90a4ae')+G('translate(28,70) scale(.48)',bowl())+G('translate(56,70) scale(.48)',bowl('#e57373',false)+E(0,0,26,7,'#ffcc80'))+E(52,46,18,9,'#fff')+P('M42,44 Q52,36 62,44Z','#8d6e63')+R(76,38,14,24,2,'#fff')+R(76,46,14,8,0,'#42a5f5')+L('M20,40 L40,36','#8d5524',2.5)+L('M20,44 L40,40','#8d5524',2.5)],
+  yasumijikan:['やすみじかん',clock(34,40,24)+ball(74,72,15)],
+  kaerujikan:['かえるじかん',randoseru('translate(50,54) scale(1.25)')+clock(82,20,13)],
+  pasokon:['パソコン',R(18,18,64,44,4,'#455a64')+R(23,23,54,34,1,'#90caf9')+P('M10,64 L90,64 L96,82 L4,82Z','#b0bec5')+L('M38,74 L62,74',O,2)],
+  shigoto:['しごと',K({expr:'smile',hair:'bandana',shirt:'#90caf9',chest:P('M34,66 L66,66 L70,100 L30,100Z','#ff8a65')+L('M34,66 Q50,60 66,66',O,2)})],
+  wakatta:['わかった',K({pose:'maru',expr:'happy',shirt:'#ef9a9a'})],
+  dekiru:['できる',K({pose:'flex',expr:'happy',shirt:'#ffca28'})+T(20,34,20,'✦','#ff9800')],
+  dekinai:['できない',K({expr:'sad',shirt:'#90a4ae'})+G('translate(78,26) scale(.36)',L('M23,23 L77,77',BLUE,16)+L('M77,23 L23,77',BLUE,16)).replace('translate(78,26)','translate(64,8)')],
+  motto:['もっと',P('M40,10 L60,10 L60,40 L90,40 L90,60 L60,60 L60,90 L40,90 L40,60 L10,60 L10,40 L40,40Z','#ff9800')],
+  chottomatte:['ちょっとまって',palm(36,58,1.8)+clock(78,24,14)],
+  issho:['いっしょに',kidAt({pose:'reachR',expr:'happy',shirt:'#5b9bd5'},'translate(-14,16) scale(.66)')+kidAt({pose:'reachL',expr:'happy',hair:'girl',shirt:'#f48fb1'},'translate(44,16) scale(.66)')+heart(50,24,1.1)],
+  star:['ほし',P('M50,10 L61,38 L91,39 L67,58 L76,88 L50,70 L24,88 L33,58 L9,39 L39,38Z','#ffca28')],
+  heartBig:['ハート',heart(50,56,3.4)],
+};
+/* ---- 追加の絵（例を増やす 2026-11） ---- */
+FACE.shy=['closed','','small','shy']; FACE.kuyashii=['pain','angry','grit','tears']; FACE.relief=['closed','up','smile','blush'];
+EXTRA.shy=`<ellipse cx="-12" cy="7" rx="6.5" ry="4.5" fill="#ff6f91" opacity=".6"/><ellipse cx="12" cy="7" rx="6.5" ry="4.5" fill="#ff6f91" opacity=".6"/>`+L('M-16,-15 L-12,-11 M-8,-17 L-6,-12','#ff6f91',1.8);
+POSE.banzai=limb('M31,72 Q18,50 14,30','S')+hand(14,27)+limb('M69,72 Q82,50 86,30','S')+hand(86,27);
+const ring=(x,y,rx,ry=rx)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="none" stroke="#e53935" stroke-width="4" stroke-dasharray="7 4"/>`;
+const cloud=(x,y,s,c='#eceff1')=>G(`translate(${x},${y}) scale(${s})`,P('M-22,10 Q-30,10 -30,2 Q-30,-8 -20,-8 Q-18,-20 -4,-20 Q8,-22 12,-10 Q24,-12 26,0 Q30,10 20,10Z',c));
+const drop=(x,y,s=1,c='#64b5f6')=>G(`translate(${x},${y}) scale(${s})`,P('M0,-8 Q-6,0 -5,3 Q-4,8 0,8 Q4,8 5,3 Q6,0 0,-8Z',c));
+const yunomi=(tr)=>G(tr,L('M42,20 Q38,12 42,6','#bbb',2.5)+L('M56,20 Q52,12 56,6','#bbb',2.5)+P('M24,28 L76,28 L72,82 Q50,90 28,82Z','#5b8c5a')+E(50,28,26,6,'#a5d6a7'));
+const flower=(x,y,s,c='#f8bbd0')=>G(`translate(${x},${y}) scale(${s})`,[0,72,144,216,288].map(a=>G(`rotate(${a})`,P('M0,0 Q-9,-10 -5,-18 L0,-15 L5,-18 Q9,-10 0,0Z',c))).join('')+`<circle r="3.5" fill="#f06292"/>`);
+const glove=(tr)=>G(tr,palm(0,0,1).replace(/#FFDDC4/g,'#f5f5f5')+R(-11,18,22,8,2,'#90caf9'));
+const blob=(c)=>P('M50,14 Q66,12 74,26 Q90,30 86,48 Q94,66 78,76 Q70,92 50,86 Q30,92 22,76 Q6,66 14,48 Q10,30 26,26 Q34,12 50,14Z',c);
+const dots=(n,c='#fb8c00')=>{ let s=''; for(let i=0;i<n;i++){ const row=Math.floor(i/5), col=i%5, inRow=Math.min(5,n-row*5); s+=`<circle cx="${50+(col-(inRow-1)/2)*15}" cy="${70+row*15}" r="5.5" fill="${c}" stroke="${O}" stroke-width="2"/>`; } return s; };
+const numCard=(n)=>T(50,50,44,String(n),'#e65100')+dots(n);
+const straps=L('M36,62 L34,100','#b71c1c',6)+L('M64,62 L66,100','#b71c1c',6);
+const bubble=(x,y,w,h)=>P(`M${x},${y} L${x+w},${y} Q${x+w+6},${y} ${x+w+6},${y+6} L${x+w+6},${y+h-6} Q${x+w+6},${y+h} ${x+w},${y+h} L${x+22},${y+h} L${x+12},${y+h+9} L${x+14},${y+h} L${x+6},${y+h} Q${x},${y+h} ${x},${y+h-6} L${x},${y+6} Q${x},${y} ${x+6},${y}Z`,W);
+
+Object.assign(D,{
+  /* あいさつ */
+  ittekimasu:['いってきます',house('translate(-6,38) scale(.58)')+kidAt({pose:'waveR',expr:'happy',back:R(20,56,60,34,9,'#c62828'),chest:straps},'translate(34,8) scale(.74)')],
+  tadaima:['ただいま',house('translate(34,0) scale(.68)')+kidAt({pose:'banzai',expr:'happy',hair:'girl',shirt:'#ffb74d'},'translate(-8,30) scale(.68)')],
+  yoroshiku:['よろしくおねがいします',bow(32,{shirt:'#7986cb',extra:T(82,26,18,'✦','#ff9800')+T(18,24,14,'✦','#ff9800')})],
+  omedetou:['おめでとう',L('M50,2 L50,10',O,2.5)+G('translate(38,22) rotate(-35)',P('M-16,0 A16,16 0 0,1 16,0Z','#ffca28'))+G('translate(62,22) rotate(35)',P('M-16,0 A16,16 0 0,1 16,0Z','#ffca28'))+R(40,28,20,58,2,'#fff')+L('M44,28 L44,86 M56,28 L56,86',RED,2)+T(50,48,11,'お','#e53935')+T(50,62,11,'め','#e53935')+T(50,76,11,'で','#e53935')+[[16,40,'#e53935'],[80,48,'#1e88e5'],[22,70,'#43a047'],[84,74,'#ab47bc'],[12,54,'#fdd835'],[88,30,'#ff7043']].map(([x,y,c])=>`<rect x="${x}" y="${y}" width="6" height="6" fill="${c}" transform="rotate(25 ${x} ${y})"/>`).join('')],
+  /* きもち */
+  hazukashii:['はずかしい',face('shy','girl')],
+  sabishii:['さびしい',`<ellipse cx="50" cy="90" rx="36" ry="6" fill="#cfd8dc"/>`+kidAt({expr:'sad',shirt:'#90a4ae'},'translate(25,26) scale(.5)')+cloud(24,22,.7,'#b0bec5')+T(78,30,18,'…','#78909c')],
+  iraira:['いらいら',face('angry','boy','translate(50,60) scale(1.55)')+L('M18,14 q5,-8 10,0 t10,0 t10,0 t10,0 t10,0 t10,0','#e53935',3.5)],
+  anshin:['ほっとした',face('relief','girl','translate(46,56) scale(1.7)')+T(84,30,18,'ほっ','#43a047')],
+  dokidoki:['どきどき',face('worried','boy','translate(38,58) scale(1.45)')+heart(80,38,1.5)+L('M66,22 L62,16 M80,14 L80,8 M94,22 L98,16','#ff5c8a',2.5)],
+  kuyashii:['くやしい',face('kuyashii','boy')],
+  /* たべもの */
+  udon:['うどん',G('translate(50,52)',P('M-40,-4 L40,-4 Q38,34 0,36 Q-38,34 -40,-4Z','#6d4c41')+E(0,-4,40,10,'#f3e0b5')+L('M-30,-6 Q-22,-1 -14,-6 T2,-6 T18,-6 T30,-6','#d7c39a',6)+L('M-30,-6 Q-22,-1 -14,-6 T2,-6 T18,-6 T30,-6','#fff',3.5)+P('M8,-12 A8,8 0 0,1 24,-12Z','#fff')+P('M10,-12 A6,6 0 0,1 22,-12Z','#f48fb1','stroke="none"')+`<g fill="#7cb342"><circle cx="-18" cy="-10" r="2.5"/><circle cx="-10" cy="-12" r="2.5"/><circle cx="-24" cy="-4" r="2.5"/></g>`)+L('M58,6 L44,46','#8d5524',3)+L('M66,8 L50,46','#8d5524',3)],
+  misoshiru:['みそしる',G('translate(50,46)',P('M-36,0 Q-32,36 0,36 Q32,36 36,0Z','#8e2b1e')+E(0,0,36,10,'#d4a256')+R(-18,-4,8,6,1,'#fff')+R(6,-6,8,6,1,'#fff')+L('M-6,2 q3,-4 6,0 t6,0','#2e7d32',3))+R(40,80,20,6,2,'#8e2b1e')+L('M40,24 Q36,16 40,8','#bbb',2.5)+L('M58,24 Q54,16 58,8','#bbb',2.5)],
+  tamago:['たまご',P('M20,52 Q14,26 40,24 Q56,10 72,26 Q92,32 84,56 Q88,80 62,80 Q44,92 28,78 Q10,72 20,52Z','#fff')+C(52,52,15,'#ffb300')+`<circle cx="47" cy="47" r="4" fill="#fff" opacity=".7"/>`],
+  yakizakana:['さかな（やきざかな）',R(6,54,88,32,8,'#fff')+P('M16,68 Q38,50 64,62 L82,52 L78,68 L82,84 L64,74 Q38,86 16,70Z','#b0a08a')+C(26,66,3,O)+L('M36,62 L40,74 M46,60 L50,74 M56,62 L58,72','#6d4c41',2.5)+E(84,40,10,7,'#fff59d')],
+  karaage:['からあげ',E(50,64,42,22,'#fff')+P('M14,62 Q20,40 40,46 Q30,64 14,62Z','#9ccc65')+C(42,54,12,'#c77d3a')+C(60,50,12,'#b86e2e')+C(54,66,12,'#c77d3a')+C(72,62,11,'#b86e2e')],
+  sandwich:['サンドイッチ',P('M12,78 L46,22 L52,78Z','#fff3d6')+L('M20,66 L49,60','#7cb342',4)+L('M26,56 L48,50','#fdd835',4)+P('M48,78 L82,22 L90,78Z','#fff3d6')+L('M58,66 L88,60','#ef5350',4)+L('M62,56 L86,50','#7cb342',4)],
+  aisu:['アイス',P('M34,52 L66,52 L50,94Z','#e0a55b')+L('M40,60 L56,80 M60,60 L46,80','#c8873a',2)+P('M30,54 Q24,40 40,38 Q36,22 52,22 Q58,8 62,22 Q76,26 68,40 Q80,46 70,54Z','#fff8e1')],
+  keki:['ケーキ',P('M14,46 L86,36 L86,78 L14,86Z','#fff3d6')+P('M14,46 L50,24 L86,36Z','#fff')+L('M14,60 L86,52','#ef5350',4)+L('M14,72 L86,64','#fff',4)+C(52,26,8,'#e53935')+P('M48,18 L56,18 L52,22Z','#43a047')],
+  banana:['バナナ',P('M18,30 Q20,72 60,82 Q84,86 90,74 Q70,74 52,64 Q32,52 28,26Z','#ffeb3b')+L('M18,30 L22,20','#6d4c41',4)+L('M30,40 Q38,62 64,74','#f9a825',2)],
+  ichigo:['いちご',P('M50,92 Q20,70 22,42 Q26,24 50,28 Q74,24 78,42 Q80,70 50,92Z','#e53935')+P('M30,30 L40,18 L46,28 L54,16 L60,28 L70,20 L70,32 Q50,40 30,30Z','#66bb6a')+[[38,46],[56,44],[46,58],[64,58],[36,64],[54,72],[46,80]].map(([x,y])=>`<ellipse cx="${x}" cy="${y}" rx="1.6" ry="2.4" fill="#fff59d"/>`).join('')],
+  purin:['プリン',E(50,84,40,8,'#fff')+P('M26,82 L34,30 Q50,24 66,30 L74,82Z','#ffe082')+P('M34,30 Q50,24 66,30 L64,40 Q50,46 36,40Z','#8d4b1e')+C(50,20,6,'#e53935')+L('M50,14 Q52,6 58,4','#43a047',2)],
+  /* からだ */
+  atama:['あたま',face('neutral','boy')+ring(50,26,38,18)],
+  me:['め',face('neutral','boy')+ring(50,54,30,11)],
+  mimi:['みみ',face('neutral','boy')+ring(88,56,11,14)],
+  hana:['はな',face('neutral','boy')+L('M50,58 Q54,64 50,66',O,2.5)+ring(50,62,11,10)],
+  kuchi:['くち',face('smile','boy')+ring(50,71,17,10)],
+  ha:['は（歯）',G('translate(50,50) scale(1.45)',P('M-18,-20 Q-26,-20 -26,-6 Q-25,10 -17,25 Q-12,32 -8,22 L-4,8 Q0,4 4,8 L8,22 Q12,32 17,25 Q25,10 26,-6 Q26,-20 18,-20 Q8,-24 0,-18 Q-8,-24 -18,-20Z','#fff'))+T(80,24,18,'✦','#4fc3f7')+T(20,30,12,'✦','#4fc3f7')],
+  te:['て',palm(30,54,1.5)+G('translate(70,54) scale(-1,1)',palm(0,0,1.5))],
+  ashi:['あし',R(30,6,40,26,6,'#3949ab')+_limb('M41,30 L41,76',SKIN)+_limb('M59,30 L59,76',SKIN)+P('M28,74 L46,74 Q48,84 46,90 L22,90 Q18,82 28,74Z','#e53935')+P('M54,74 L72,74 Q82,82 78,90 L54,90 Q52,84 54,74Z','#e53935')],
+  onaka:['おなか',K({expr:'smile',shirt:'#81c784'})+ring(50,84,16,12)],
+  /* ばしょ */
+  mise:['おみせ',R(10,34,80,56,2,'#fff8e1')+[0,1,2,3,4,5,6,7].map(i=>P(`M${10+i*10},34 L${20+i*10},34 L${20+i*10},44 Q${15+i*10},50 ${10+i*10},44Z`,i%2?'#fff':'#e53935')).join('')+R(16,54,40,30,1,'#bfe3ff')+R(20,66,8,8,1,'#ffb74d')+R(32,62,8,12,1,'#81c784')+R(44,66,8,8,1,'#f06292')+R(62,54,22,36,1,'#a1887f')+R(20,12,60,18,3,'#43a047')+T(50,26,13,'おみせ','#fff')],
+  byouin:['びょういん',R(14,26,72,68,2,'#fff')+R(40,6,20,20,2,'#fff')+`<path d="M47,9 h6 v5 h5 v6 h-5 v5 h-6 v-5 h-5 v-6 h5Z" fill="${RED}"/>`+[20,36,54,70].map(x=>R(x,36,10,10,1,'#bfe3ff')+R(x,54,10,10,1,'#bfe3ff')).join('')+R(42,72,16,22,1,'#90caf9')],
+  koen:['こうえん',L('M0,88 L100,88','#7cb342',5)+R(24,50,8,38,1,'#8d6e63')+C(28,36,20,'#66bb6a')+C(16,46,10,'#66bb6a')+C(40,46,10,'#66bb6a')+R(52,64,40,6,2,'#a1887f')+R(52,74,40,5,2,'#a1887f')+R(56,79,4,9,1,'#6d4c41')+R(84,79,4,9,1,'#6d4c41')+sun(80,20,8)],
+  eki:['えき',R(6,22,88,46,4,'#fff')+R(6,50,88,12,0,'#43a047')+T(50,44,22,'えき')+T(18,60,10,'◀','#fff')+T(82,60,10,'▶','#fff')+R(20,68,6,26,1,'#9e9e9e')+R(74,68,6,26,1,'#9e9e9e')],
+  kaisha:['かいしゃ',R(22,10,56,84,2,'#b0bec5')+[16,28,40,52,64].map(y=>[30,44,58].map(x=>R(x,y,10,8,1,'#e3f2fd')).join('')).join('')+R(42,78,16,16,1,'#607d8b')],
+  /* しごと */
+  shitsumon:['しつもん',K({pose:'raiseL',expr:'smile',shirt:'#90caf9'})+qmark(80,44,38,'#1e88e5')],
+  oshiete:['おしえて',R(4,10,52,36,3,'#2e7d32')+T(30,36,18,'？','#fff')+kidAt({pose:'raiseL',expr:'teacher',hair:'woman',shirt:'#43a047'},'translate(40,26) scale(.68)')],
+  tsugi:['つぎは？',kidAt({expr:'puzzled',shirt:'#ffb74d'},'translate(-10,22) scale(.74)')+G('translate(42,44) scale(.58)',arrowR('#1e88e5'))+qmark(74,36,32)],
+  shippai:['しっぱい',kidAt({expr:'worried',shirt:'#90a4ae'},'translate(-8,0) scale(.72)')+G('translate(66,84)',P('M-26,0 A26,9 0 0,0 -2,9 L2,2 L-4,-3 L0,-9 A26,9 0 0,0 -26,0Z','#fff')+P('M30,3 A26,9 0 0,1 6,12 L10,5 L4,0 L8,-6 A26,9 0 0,1 30,3Z','#fff'))+L('M60,62 L56,56 M70,60 L72,52 M82,64 L88,58','#e53935',2.5)],
+  kyukei:['きゅうけい',kidAt({expr:'relief',shirt:'#a5d6a7'},'translate(4,4) scale(.8)')+yunomi('translate(48,52) scale(.42)')+T(82,30,16,'ほっ','#43a047')],
+  timecard:['タイムカード',R(22,6,56,58,6,'#cfd8dc')+clock(50,28,14)+R(30,48,40,6,2,'#455a64')+R(38,44,24,48,2,'#fff')+L('M43,62 L57,62 M43,70 L57,70 M43,78 L57,78','#90caf9',2)],
+  houkoku:['ほうこく',kidAt({expr:'smile',shirt:'#ffb74d'},'translate(-12,34) scale(.62)')+kidAt({expr:'teacher',hair:'woman',shirt:'#43a047'},'translate(44,34) scale(.62)')+bubble(6,6,48,26)+L('M14,15 L48,15 M14,23 L40,23','#90a4ae',2.5)],
+  abunai:['あぶない',P('M50,8 L94,88 L6,88Z','#ffd600')+`<rect x="45" y="34" width="10" height="32" rx="5" fill="${O}"/><circle cx="50" cy="76" r="5.5" fill="${O}"/>`],
+  tebukuro:['てぶくろ',glove('translate(32,52) scale(1.2) rotate(-12)')+glove('translate(68,52) scale(-1.2,1.2) rotate(-12)')],
+  /* もちもの */
+  kaban:['かばん',L('M34,42 Q34,10 50,10 Q66,10 66,42',O,8)+L('M34,42 Q34,10 50,10 Q66,10 66,42','#1565c0',4)+R(16,38,68,54,6,'#1e88e5')+R(30,56,40,22,3,'#64b5f6')],
+  renrakucho:['れんらくちょう',R(18,8,64,84,4,'#ffcc80')+R(18,8,10,84,2,'#fb8c00')+R(34,20,40,22,2,'#fff')+T(54,35,10,'れんらく')+G('translate(70,70) rotate(40)',R(-3,-24,6,30,1,'#43a047')+P('M-3,6 L3,6 L0,13Z','#ffe0b2'))],
+  fudebako:['ふでばこ',R(10,32,80,40,8,'#42a5f5')+L('M10,46 L90,46',O,2.5)+G('translate(34,60) rotate(-10)',R(-3,-10,24,6,1,'#ffca28'))+G('translate(58,62) rotate(8)',R(0,-6,20,6,1,'#ef5350'))],
+  enpitsu:['えんぴつ',G('translate(50,50) rotate(40)',R(-8,-40,16,60,1,'#43a047')+L('M-2.7,-40 L-2.7,20 M2.7,-40 L2.7,20','#2e7d32',1.5)+P('M-8,20 L8,20 L0,40Z','#ffe0b2')+`<path d="M-2.5,32 L2.5,32 L0,40Z" fill="${O}"/>`)],
+  keshigomu:['けしごむ',G('translate(50,52) rotate(-15)',R(-34,-16,68,32,4,'#fff')+R(-8,-17,40,34,2,'#1e88e5')+L('M0,-6 L24,-6 M0,4 L18,4','#fff',3))+L('M14,84 Q24,80 30,86','#bdbdbd',2)],
+  hasami:['はさみ',L('M44,50 L86,12','#9e9e9e',6)+L('M56,50 L86,30','#9e9e9e',6)+L('M44,50 L86,12',O,1)+C(50,50,3,O)+E(30,70,13,10,'none').replace('fill="none"','fill="none" stroke-width="7" stroke="#e53935"')+E(56,78,13,10,'none').replace('fill="none"','fill="none" stroke-width="7" stroke="#e53935"')],
+  nori:['のり',R(34,34,32,58,4,'#fff176')+R(34,12,32,24,4,'#e53935')+R(40,52,20,18,2,'#fff')+T(50,65,10,'のり')],
+  suito:['すいとう',L('M30,30 Q10,60 30,92',O,4)+R(32,24,36,68,10,'#4fc3f7')+R(36,10,28,16,4,'#0277bd')+R(32,46,36,10,0,'#0288d1')],
+  taoru:['タオル',R(14,24,72,56,4,'#f8bbd0')+L('M14,36 L86,36 M14,68 L86,68','#ec407a',3)+P('M14,24 Q50,34 86,24',null).replace('fill="null"','fill="none"')],
+  uwabaki:['うわばき',G('translate(4,-10)',P('M10,74 L10,54 Q10,48 18,48 L40,50 Q56,52 68,62 L86,66 Q94,68 94,76 L94,82 L10,82Z','#fff')+P('M70,63 L86,66 Q94,68 94,76 L94,82 L72,82Z','#1e88e5'))+G('translate(-2,8)',P('M10,74 L10,54 Q10,48 18,48 L40,50 Q56,52 68,62 L86,66 Q94,68 94,76 L94,82 L10,82Z','#fff')+P('M70,63 L86,66 Q94,68 94,76 L94,82 L72,82Z','#1e88e5'))],
+  boushi:['ぼうし',P('M20,64 Q20,22 50,22 Q80,22 80,64Z','#ffd600')+E(50,66,42,9,'#ffd600')+L('M34,30 Q50,26 66,30','#f9a825',2)+C(50,22,3,'#f9a825')],
+  obento:['おべんとう',R(8,22,84,62,8,'#5d4037')+R(14,28,72,50,4,'#fff')+L('M50,28 L50,78',O,2)+C(32,52,6,'#e53935')+R(54,32,14,12,2,'#ffd54f')+R(70,32,12,12,2,'#ffd54f')+C(62,62,7,'#7cb342')+C(56,58,5,'#8bc34a')+P('M72,54 L82,54 L82,64 L80,72 L77,64 L75,72 L72,64Z','#ef5350')],
+  /* みだしなみ */
+  tearai:['てをあらう',R(30,6,40,10,3,'#b0bec5')+R(56,14,10,12,2,'#b0bec5')+L('M61,28 L61,40','#4fc3f7',4)+G('translate(38,70) rotate(25)',palm(0,0,1.15))+G('translate(66,70) scale(-1,1) rotate(25)',palm(0,0,1.15))+[[50,50,5],[42,46,3.5],[60,44,4],[52,40,3]].map(([x,y,r])=>`<circle cx="${x}" cy="${y}" r="${r}" fill="#e1f5fe" stroke="#4fc3f7" stroke-width="1.5"/>`).join('')],
+  hamigaki:['はみがき',G('translate(46,54) rotate(-35)',R(-6,-6,62,12,6,'#4fc3f7')+R(-26,-10,22,10,2,'#fff')+L('M-24,-10 L-24,-16 M-18,-10 L-18,-16 M-12,-10 L-12,-16 M-6,-10 L-6,-16','#90caf9',2.5))+G('translate(30,30) scale(.55)',P('M-18,-20 Q-26,-20 -26,-6 Q-25,10 -17,25 Q-12,32 -8,22 L-4,8 Q0,4 4,8 L8,22 Q12,32 17,25 Q25,10 26,-6 Q26,-20 18,-20 Q8,-24 0,-18 Q-8,-24 -18,-20Z','#fff'))+T(54,22,14,'✦','#4fc3f7')],
+  ugai:['うがい',K({pose:'drink',expr:'sleep',shirt:'#80cbc4',tilt:12})+[[30,14,4],[22,8,3],[38,6,3]].map(([x,y,r])=>`<circle cx="${x}" cy="${y}" r="${r}" fill="#e1f5fe" stroke="#4fc3f7" stroke-width="1.5"/>`).join('')+T(18,30,10,'がらがら','#0288d1')],
+  kaoarai:['かおをあらう',face('sleep','boy','translate(50,56) scale(1.6)')+drop(20,30,1.2)+drop(82,28,1.2)+drop(16,60,1)+drop(86,62,1)+drop(50,14,1.1)],
+  ofuro:['おふろ',L('M30,26 Q26,18 30,10','#bbb',2.5)+L('M70,26 Q66,18 70,10','#bbb',2.5)+G('translate(50,46) scale(.85)',head('relief','boy'))+R(6,56,88,34,10,'#90caf9')+E(50,58,44,6,'#e1f5fe')+[[28,52,4],[70,50,5],[60,56,3]].map(([x,y,r])=>`<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="#4fc3f7" stroke-width="1.5"/>`).join('')],
+  fuku:['ふく',P('M30,14 L42,10 Q50,20 58,10 L70,14 L90,32 L80,44 L72,38 L72,90 L28,90 L28,38 L20,44 L10,32Z','#64b5f6')],
+  zubon:['ズボン',P('M26,12 L74,12 L82,90 L56,90 L50,40 L44,90 L18,90Z','#3949ab')+L('M26,22 L74,22',O,2)],
+  kutsu:['くつ',P('M8,70 L10,44 Q12,36 22,38 L40,42 Q50,44 58,52 L82,58 Q94,62 94,72 L94,76 L8,76Z','#ef5350')+R(6,74,90,10,4,'#fff')+L('M30,44 L38,52 M36,42 L44,50 M42,44 L50,52','#fff',2.5)],
+  kutsushita:['くつした',P('M34,10 L60,10 L60,56 L82,64 Q92,70 86,84 Q82,92 70,90 L40,82 Q32,80 34,70Z','#fff')+R(34,10,26,12,0,'#64b5f6')+P('M70,90 Q82,92 86,84 Q92,70 82,64 L74,62 Q82,76 70,90Z','#64b5f6')],
+  uwagi:['うわぎ',P('M30,12 L42,8 L50,20 L58,8 L70,12 L88,30 L90,82 L78,82 L74,44 L74,92 L26,92 L26,44 L22,82 L10,82 L12,30Z','#ef6c00')+L('M50,20 L50,92',O,2.5)+C(44,46,2.5,'#fff')+C(44,62,2.5,'#fff')+C(44,78,2.5,'#fff')],
+  kushi:['かみをとかす',R(14,30,72,16,4,'#8d6e63')+[...Array(13)].map((_,i)=>L(`M${20+i*5},46 L${20+i*5},70`,'#8d6e63',3)).join('')],
+  /* あそび */
+  buranko:['ブランコ',L('M14,92 L26,12 L74,12 L86,92',O,8)+L('M14,92 L26,12 L74,12 L86,92','#e53935',4)+L('M42,12 L42,66 M58,12 L58,66','#757575',2)+R(34,64,32,7,2,'#8d6e63')],
+  suberidai:['すべりだい',L('M14,90 L22,26 M30,90 L36,26','#757575',3)+L('M17,74 L32,74 M19,58 L34,58 M21,42 L35,42','#757575',3)+R(16,22,30,8,2,'#ffb300')+P('M42,22 L50,22 L92,86 L80,90Z','#42a5f5')],
+  tsumiki:['つみき',R(12,62,32,28,2,'#e53935')+R(48,62,32,28,2,'#1e88e5')+R(30,34,32,28,2,'#fdd835')+P('M30,34 L46,10 L62,34Z','#43a047')],
+  ehon:['えほん',P('M8,24 L50,30 L92,24 L92,82 L50,88 L8,82Z','#fff')+L('M50,30 L50,88',O,2.5)+sun(28,46,6)+L('M14,72 Q28,56 44,72','#7cb342',3)+house('translate(46,22) scale(.5)')],
+  terebi:['テレビ',R(8,16,84,58,6,'#424242')+R(14,22,72,46,1,'#81d4fa')+P('M14,68 Q40,46 62,60 Q74,52 86,62 L86,68Z','#81c784','stroke="none"')+sun(30,36,6)+R(42,74,16,8,1,'#616161')+R(28,82,44,6,3,'#616161')],
+  game:['ゲーム',R(8,28,84,46,16,'#7e57c2')+R(32,34,36,30,3,'#b2dfdb')+R(14,46,14,4,1,O)+R(19,41,4,14,1,O)+C(78,46,4,'#ef5350')+C(84,54,4,'#fdd835')],
+  puzzle:['パズル',P('M14,30 L36,30 Q34,20 42,20 Q50,20 48,30 L70,30 L70,50 Q80,48 80,56 Q80,64 70,62 L70,84 L14,84 L14,62 Q24,64 24,56 Q24,48 14,50Z','#ffb74d')],
+  dance:['ダンス',K({pose:'banzai',expr:'laugh',hair:'girl',shirt:'#ff7043'})+T(14,74,18,'♪','#7e57c2')+T(86,72,18,'♫','#1e88e5')],
+  ball:['ボール',C(50,52,36,'#fff')+P('M50,38 L62,46 L58,60 L42,60 L38,46Z',O)+L('M50,38 L50,18 M62,46 L80,40 M58,60 L68,78 M42,60 L32,78 M38,46 L20,40',O,2.5)],
+  kendama:['けんだま',L('M50,74 Q86,60 70,28 Q66,20 62,22','#9e9e9e',1.5)+R(46,40,8,52,2,'#d7a86e')+R(30,44,40,12,5,'#d7a86e')+R(42,32,16,10,3,'#d7a86e')+C(62,18,12,'#e53935')+`<circle cx="58" cy="14" r="3" fill="#fff" opacity=".7"/>`],
+  shabondama:['しゃぼんだま',L('M16,92 L34,66','#ff7043',4)+C(38,60,6,'none')+[[60,40,16],[34,30,10],[80,66,10],[70,16,8]].map(([x,y,r])=>`<circle cx="${x}" cy="${y}" r="${r}" fill="#e1f5fe" fill-opacity=".6" stroke="#4fc3f7" stroke-width="2"/><circle cx="${x-r*.4}" cy="${y-r*.4}" r="${r*.2}" fill="#fff"/>`).join('')],
+  /* どうぶつ */
+  inu:['いぬ',C(50,54,30,'#e0b07a')+G('translate(24,48) rotate(15)',E(0,0,10,20,'#8d6e63'))+G('translate(76,48) rotate(-15)',E(0,0,10,20,'#8d6e63'))+E(50,66,14,10,'#fff3e0')+`<circle cx="40" cy="48" r="3.2" fill="${O}"/><circle cx="60" cy="48" r="3.2" fill="${O}"/>`+E(50,60,5,4,O)+L('M50,64 L50,68 M44,70 Q50,74 56,70',O,2)],
+  neko:['ねこ',P('M24,42 L26,12 L46,28Z','#ffb74d')+P('M76,42 L74,12 L54,28Z','#ffb74d')+C(50,56,30,'#ffb74d')+L('M44,30 L46,38 M50,28 L50,37 M56,30 L54,38','#e65100',2)+`<circle cx="39" cy="52" r="3.2" fill="${O}"/><circle cx="61" cy="52" r="3.2" fill="${O}"/>`+P('M47,60 L53,60 L50,64Z','#f48fb1')+L('M44,68 Q47,72 50,68 Q53,72 56,68',O,2)+L('M14,58 L32,60 M14,66 L32,64 M86,58 L68,60 M86,66 L68,64',O,1.5)],
+  usagi:['うさぎ',E(38,24,8,22,'#fff')+E(62,24,8,22,'#fff')+`<ellipse cx="38" cy="26" rx="3.5" ry="15" fill="#f8bbd0"/><ellipse cx="62" cy="26" rx="3.5" ry="15" fill="#f8bbd0"/>`+C(50,62,26,'#fff')+`<circle cx="41" cy="58" r="3" fill="${O}"/><circle cx="59" cy="58" r="3" fill="${O}"/>`+P('M47,65 L53,65 L50,68Z','#f48fb1')+L('M50,68 L50,72 M45,74 Q50,76 55,74',O,1.8)+`<circle cx="34" cy="68" r="4" fill="#ff8fa3" opacity=".5"/><circle cx="66" cy="68" r="4" fill="#ff8fa3" opacity=".5"/>`],
+  kuma:['くま',C(26,28,11,'#8d6e63')+C(74,28,11,'#8d6e63')+C(26,28,5,'#d7ccc8')+C(74,28,5,'#d7ccc8')+C(50,54,30,'#8d6e63')+E(50,64,13,10,'#d7ccc8')+`<circle cx="39" cy="50" r="3.2" fill="${O}"/><circle cx="61" cy="50" r="3.2" fill="${O}"/>`+E(50,60,5,3.5,O)+L('M46,68 Q50,71 54,68',O,2)],
+  panda:['パンダ',C(26,28,10,O)+C(74,28,10,O)+C(50,54,30,'#fff')+G('translate(39,50) rotate(30)',`<ellipse rx="7" ry="9" fill="${O}"/>`)+G('translate(61,50) rotate(-30)',`<ellipse rx="7" ry="9" fill="${O}"/>`)+`<circle cx="40" cy="49" r="2.4" fill="#fff"/><circle cx="60" cy="49" r="2.4" fill="#fff"/>`+E(50,62,5,3.5,O)+L('M46,68 Q50,71 54,68',O,2)],
+  zou:['ぞう',E(22,46,16,22,'#90a4ae')+E(78,46,16,22,'#90a4ae')+C(50,44,24,'#b0bec5')+P('M42,56 Q40,82 50,92 Q58,96 60,88 Q52,82 58,56Z','#b0bec5')+`<circle cx="41" cy="42" r="3" fill="${O}"/><circle cx="59" cy="42" r="3" fill="${O}"/>`+L('M48,66 L54,66 M48,74 L54,74',O,1.5)],
+  hiyoko:['とり（ひよこ）',C(50,56,30,'#ffeb3b')+P('M44,26 Q46,16 50,24 Q54,14 56,26Z','#ffeb3b')+`<circle cx="40" cy="50" r="3.4" fill="${O}"/><circle cx="60" cy="50" r="3.4" fill="${O}"/>`+P('M44,58 L56,58 L50,66Z','#ff9800')+P('M20,58 Q12,66 22,74Z','#fdd835')+P('M80,58 Q88,66 78,74Z','#fdd835')+L('M42,86 L40,94 M58,86 L60,94','#ff9800',3)+`<circle cx="32" cy="60" r="4" fill="#ff8fa3" opacity=".5"/><circle cx="68" cy="60" r="4" fill="#ff8fa3" opacity=".5"/>`],
+  sakanaAnimal:['さかな',P('M12,50 Q40,20 70,44 L90,26 L88,50 L90,74 L70,56 Q40,80 12,50Z','#4fc3f7')+C(28,46,4,'#fff')+`<circle cx="28" cy="46" r="2" fill="${O}"/>`+L('M38,38 Q42,50 38,62',O,2)+L('M48,44 Q52,48 56,44 M52,52 Q56,56 60,52 M46,56 Q50,60 54,56','#0288d1',2)],
+  kame:['かめ',E(22,74,8,6,'#a5d6a7')+E(72,76,8,6,'#a5d6a7')+E(30,44,8,6,'#a5d6a7')+C(88,56,10,'#a5d6a7')+`<circle cx="91" cy="53" r="2" fill="${O}"/>`+P('M14,66 Q14,30 50,30 Q84,30 84,66Z','#66bb6a')+L('M14,66 L84,66',O,2.5)+P('M40,40 L58,40 L64,52 L58,64 L40,64 L34,52Z','#81c784')+L('M34,52 L16,52 M64,52 L82,52 M40,40 L32,32 M58,40 L66,32',O,2)],
+  kaeru:['かえる',C(32,36,12,'#81c784')+C(68,36,12,'#81c784')+E(50,62,36,26,'#81c784')+C(32,36,6,'#fff')+C(68,36,6,'#fff')+`<circle cx="32" cy="36" r="3" fill="${O}"/><circle cx="68" cy="36" r="3" fill="${O}"/>`+L('M30,66 Q50,80 70,66',O,2.5)+`<circle cx="24" cy="66" r="5" fill="#ff8fa3" opacity=".5"/><circle cx="76" cy="66" r="5" fill="#ff8fa3" opacity=".5"/>`],
+  /* てんき・きせつ */
+  hare:['はれ',sun(50,50,22)],
+  kumori:['くもり',cloud(58,42,1.25,'#b0bec5')+cloud(42,62,1.4,'#eceff1')],
+  ame:['あめ',P('M10,52 Q14,16 50,14 Q86,16 90,52 Q81,46 72,52 Q61,46 50,52 Q39,46 28,52 Q19,46 10,52Z','#e53935')+L('M50,10 L50,14',O,3)+L('M50,52 L50,84 Q50,92 42,90',O,3.5)+drop(18,70,.9)+drop(80,66,.9)+drop(70,88,.9)+drop(26,90,.9)],
+  yuki:['ゆき',G('translate(50,46)',[0,60,120].map(a=>G(`rotate(${a})`,L('M0,-32 L0,32','#4fc3f7',4)+L('M0,-22 L-8,-30 M0,-22 L8,-30 M0,22 L-8,30 M0,22 L8,30','#4fc3f7',3))).join(''))+P('M0,86 Q50,76 100,86 L100,100 L0,100Z','#fff')],
+  atsui:['あつい',sun(80,20,11)+kidAt({expr:'tired',shirt:'#ffb74d'},'translate(-4,16) scale(.84)')+drop(16,40,1)+drop(74,52,1)+L('M10,20 Q14,14 10,8 M20,18 Q24,12 20,6','#ff7043',2)],
+  samui:['さむい',K({expr:'worried',shirt:'#5c6bc0',chest:P('M32,60 Q50,70 68,60 L70,68 Q50,80 30,68Z','#e53935')+R(56,66,10,22,2,'#e53935')})+L('M14,40 L10,46 L14,52 M86,40 L90,46 L86,52','#4fc3f7',2.5)+T(14,22,14,'❄','#4fc3f7')+T(86,20,14,'❄','#4fc3f7')],
+  haru:['はる（さくら）',L('M10,90 Q40,60 90,40','#6d4c41',4)+flower(34,40,1.3)+flower(66,62,1.1)+flower(76,26,.9)+flower(22,72,.8)],
+  natsu:['なつ',P('M10,50 A40,40 0 0,0 90,50Z','#e53935')+P('M10,50 A40,40 0 0,0 90,50 L84,50 A34,34 0 0,1 16,50Z','#43a047')+[[34,60],[50,64],[66,60],[42,72],[58,72]].map(([x,y])=>`<ellipse cx="${x}" cy="${y}" rx="2" ry="3.2" fill="${O}"/>`).join('')+sun(80,18,8)],
+  aki:['あき（もみじ）',G('translate(40,48) scale(1.2)',P('M0,-30 L5,-14 L18,-22 L13,-6 L28,-6 L15,4 L22,16 L6,10 L2,26 L0,30 L-2,26 L-6,10 L-22,16 L-15,4 L-28,-6 L-13,-6 L-18,-22 L-5,-14Z','#e53935')+L('M0,4 L0,36','#8d6e63',2.5))+G('translate(76,72) rotate(-20)',P('M0,10 L-14,-10 Q0,-18 14,-10Z','#fdd835')+L('M0,10 L0,20','#8d6e63',2))],
+  fuyu:['ふゆ（ゆきだるま）',C(50,72,22,'#fff')+C(50,40,16,'#fff')+P('M38,28 L40,14 L60,14 L62,28Z','#1e88e5')+`<circle cx="44" cy="38" r="2.6" fill="${O}"/><circle cx="56" cy="38" r="2.6" fill="${O}"/>`+L('M44,46 Q50,50 56,46',O,2)+L('M30,62 L14,50 M70,62 L86,50','#6d4c41',3)+T(14,24,12,'❄','#4fc3f7')+T(88,30,12,'❄','#4fc3f7')],
+  /* いろ */
+  aka:['あか',blob('#e53935')], ao:['あお',blob('#1e88e5')], kiiro:['きいろ',blob('#fdd835')], midori:['みどり',blob('#43a047')],
+  shiro:['しろ',blob('#ffffff')], kuro:['くろ',blob('#212121')], pinku:['ピンク',blob('#f48fb1')], orenji:['オレンジ',blob('#fb8c00')],
+  murasaki:['むらさき',blob('#8e24aa')], chairo:['ちゃいろ',blob('#795548')],
+  /* かず */
+  n1:['1（いち）',numCard(1)], n2:['2（に）',numCard(2)], n3:['3（さん）',numCard(3)], n4:['4（よん）',numCard(4)], n5:['5（ご）',numCard(5)],
+  n6:['6（ろく）',numCard(6)], n7:['7（なな）',numCard(7)], n8:['8（はち）',numCard(8)], n9:['9（きゅう）',numCard(9)], n10:['10（じゅう）',numCard(10)],
+  takusan:['たくさん',[...Array(18)].map((_,i)=>`<circle cx="${18+(i%6)*13+(Math.floor(i/6)%2)*6}" cy="${34+Math.floor(i/6)*16}" r="6" fill="#fb8c00" stroke="${O}" stroke-width="2"/>`).join('')+P('M30,86 L70,86',O)],
+  sukoshi:['すこし',`<circle cx="42" cy="56" r="7" fill="#fb8c00" stroke="${O}" stroke-width="2"/><circle cx="58" cy="56" r="7" fill="#fb8c00" stroke="${O}" stroke-width="2"/>`+L('M20,74 L80,74',O,2.5)],
+});
+
+const svg=(k)=>{ const d=D[k]; if(!d) return ''; return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" class="sym" role="img" aria-label="${d[0]}">${d[1]}</svg>`; };
+return { svg, has:k=>!!D[k], list:()=>Object.keys(D).map(k=>({k,name:D[k][0]})) };
+})();
+/*SYM-END*/
+</script>
+<script>
+'use strict';
+const KEY='commCardApp', TKEY='commCardTaiwa';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DEF_S={rate:1, pitch:1, voice:'', size:'M', showText:true, strip:true, speakOnTap:true, pin:'', hold:1.5};
+const DEF_T={layout:'face', nameA:'Aさん', nameB:'Bさん', pitchA:1, pitchB:1.4, size:'M', quick:true};
+
+/* ---------- カードのデータ（コミュニケーションカードと同じ保存場所を読むだけ。書きかえない） ---------- */
+const store={
+  get(){ return new Promise(res=>{
+    const ls=()=>{ try{ const t=localStorage.getItem(KEY); res(t?JSON.parse(t):null); }catch(e){ res(null); } };
+    if(!('indexedDB' in window)) return ls();
+    try{ const r=indexedDB.open(KEY,1); r.onupgradeneeded=()=>r.result.createObjectStore('kv');
+      r.onsuccess=()=>{ try{ const db=r.result, q=db.transaction('kv').objectStore('kv').get('data'); q.onsuccess=()=>{ db.close(); q.result?res(q.result):ls(); }; q.onerror=()=>{ db.close(); ls(); }; }catch(e){ ls(); } };
+      r.onerror=ls; r.onblocked=ls; }catch(e){ ls(); } }); }
+};
+/*DEFS-START（コミュニケーションカード.html と同じ「最初から入っているカード」。node build.js で写し直す）*/
+const DEFS=[
+  ['よくつかう','⭐','#fff2b3','star',[['はい', '👍', 'maru', ''],['いいえ', '👎', 'batsu', ''],['トイレ', '🚻', 'toilet', 'トイレにいきたい'],['たすけて', '🙋', 'tasukete', ''],['まって', '✋', 'matte', ''],['おわり', '🏁', 'owari', ''],['もういっかい', '🔁', 'mouikkai', ''],['わかりません', '🤷', 'wakaranai', '']]],
+  ['あいさつ','👋','#d9ecff','arigatou',[['おはよう', '🌅', 'ohayou', 'おはようございます'],['こんにちは', '☀️', 'konnichiwa', ''],['さようなら', '👋', 'sayounara', ''],['ありがとう', '🙏', 'arigatou', 'ありがとうございます'],['ごめんなさい', '🙇', 'gomen', ''],['おねがいします', '🤲', 'onegai', ''],['いただきます', '🍚', 'itadakimasu', ''],['ごちそうさま', '😋', 'gochisou', 'ごちそうさまでした'],['おやすみ', '🌙', 'oyasumi', 'おやすみなさい'],['おつかれさま', '😊', 'otsukare', 'おつかれさまでした'],['いってきます', '🎒', 'ittekimasu', '', 3],['ただいま', '🏠', 'tadaima', '', 3],['よろしく', '🙇', 'yoroshiku', 'よろしくおねがいします', 3],['おめでとう', '🎉', 'omedetou', 'おめでとうございます', 3]]],
+  ['きもち','😊','#ffe4e1','ureshii',[['うれしい', '😄', 'ureshii', ''],['たのしい', '🤗', 'tanoshii', ''],['かなしい', '😢', 'kanashii', ''],['おこってる', '😠', 'okotteru', ''],['こわい', '😨', 'kowai', ''],['つかれた', '😮‍💨', 'tsukareta', ''],['いたい', '🤕', 'itai', ''],['ねむい', '😴', 'nemui', ''],['びっくり', '😲', 'bikkuri', ''],['いや', '🙅', 'iya', 'いやです'],['すき', '❤️', 'suki', ''],['きらい', '💔', 'kirai', ''],['はずかしい', '😳', 'hazukashii', '', 3],['さびしい', '😞', 'sabishii', '', 3],['いらいら', '😤', 'iraira', '', 3],['ほっとした', '😌', 'anshin', '', 3],['どきどき', '💓', 'dokidoki', '', 3],['くやしい', '😣', 'kuyashii', '', 3]]],
+  ['したい','🙋','#efe1ff','yaritai',[['たべたい', '🍽️', 'tabetai', ''],['のみたい', '🥤', 'nomitai', ''],['あそびたい', '🎮', 'asobitai', ''],['やすみたい', '🛋️', 'yasumitai', ''],['かえりたい', '🏠', 'kaeritai', ''],['いきたい', '🚶', 'ikitai', ''],['みたい', '👀', 'mitai', ''],['ききたい', '🎧', 'kikitai', ''],['てつだって', '🤝', 'tetsudatte', 'てつだってください'],['ほしい', '🎁', 'hoshii', ''],['やりたい', '💪', 'yaritai', ''],['やめたい', '🛑', 'yametai', '']]],
+  ['たべもの','🍙','#ffe9c7','onigiri',[['ごはん', '🍚', 'gohan', ''],['パン', '🍞', 'pan', ''],['おにぎり', '🍙', 'onigiri', ''],['みず', '💧', 'mizu', ''],['おちゃ', '🍵', 'ocha', ''],['ジュース', '🧃', 'juice', ''],['ぎゅうにゅう', '🥛', 'gyunyu', ''],['おかし', '🍪', 'okashi', ''],['くだもの', '🍎', 'kudamono', ''],['やさい', '🥦', 'yasai', ''],['カレー', '🍛', 'curry', ''],['ラーメン', '🍜', 'ramen', ''],['うどん', '🍜', 'udon', '', 3],['みそしる', '🥣', 'misoshiru', '', 3],['たまご', '🍳', 'tamago', '', 3],['さかな', '🐟', 'yakizakana', '', 3],['からあげ', '🍗', 'karaage', '', 3],['サンドイッチ', '🥪', 'sandwich', '', 3],['アイス', '🍦', 'aisu', '', 3],['ケーキ', '🍰', 'keki', '', 3],['バナナ', '🍌', 'banana', '', 3],['いちご', '🍓', 'ichigo', '', 3],['プリン', '🍮', 'purin', '', 3]]],
+  ['からだ','🩺','#e0f7f5','kaze',[['あたまがいたい', '🤕', 'atamaitai', ''],['おなかがいたい', '🤢', 'onakaitai', ''],['ねつがある', '🤒', 'netsu', ''],['かぜをひいた', '🤧', 'kaze', ''],['けがをした', '🩹', 'kega', ''],['のどがかわいた', '🥤', 'nodo', ''],['おなかがすいた', '🍽️', 'onakasuita', ''],['くすり', '💊', 'kusuri', 'くすりをください'],['ほけんしつ', '🏥', 'hokenshitsu', 'ほけんしつにいきたい'],['トイレにいきたい', '🚽', 'toiletbowl', ''],['あたま', '🙂', 'atama', '', 3],['め', '👀', 'me', '', 3],['みみ', '👂', 'mimi', '', 3],['はな', '👃', 'hana', '', 3],['くち', '👄', 'kuchi', '', 3],['は', '🦷', 'ha', '', 3],['て', '✋', 'te', '', 3],['あし', '🦵', 'ashi', '', 3],['おなか', '🙂', 'onaka', '', 3]]],
+  ['ひと','👨‍👩‍👧','#e3f6d8','minna',[['せんせい', '👩‍🏫', 'sensei', ''],['おかあさん', '👩', 'okaasan', ''],['おとうさん', '👨', 'otousan', ''],['ともだち', '👫', 'tomodachi', ''],['わたし', '🙂', 'watashi', ''],['あなた', '👉', 'anata', ''],['みんな', '👨‍👩‍👧‍👦', 'minna', ''],['かぞく', '🏠', 'kazoku', '']]],
+  ['ばしょ','🏫','#d9ecff','kotei',[['きょうしつ', '🏫', 'kyoshitsu', ''],['たいいくかん', '🏀', 'taiikukan', ''],['としょしつ', '📚', 'toshoshitsu', ''],['しょくどう', '🍽️', 'shokudo', ''],['ほけんしつ', '🏥', 'hokenshitsu', ''],['トイレ', '🚻', 'toilet', ''],['うち', '🏠', 'uchi', ''],['こうてい', '⚽', 'kotei', ''],['バス', '🚌', 'bus', ''],['でんしゃ', '🚃', 'densha', ''],['おみせ', '🏪', 'mise', '', 3],['びょういん', '🏥', 'byouin', '', 3],['こうえん', '🌳', 'koen', '', 3],['えき', '🚉', 'eki', '', 3],['かいしゃ', '🏢', 'kaisha', '', 3]]],
+  ['かつどう','📝','#fff2b3','benkyo',[['べんきょう', '📖', 'benkyo', ''],['うんどう', '🏃', 'undou', ''],['おんがく', '🎵', 'ongaku', ''],['えをかく', '🎨', 'ekaku', ''],['そうじ', '🧹', 'souji', ''],['きゅうしょく', '🍱', 'kyushoku', ''],['やすみじかん', '⏰', 'yasumijikan', ''],['かえるじかん', '🎒', 'kaerujikan', ''],['パソコン', '💻', 'pasokon', ''],['しごと', '🛠️', 'shigoto', '']]],
+  ['へんじ','💬','#f4f4f4','maru',[['はい', '⭕', 'maru', ''],['いいえ', '❌', 'batsu', ''],['わかった', '👌', 'wakatta', 'わかりました'],['わからない', '❓', 'wakaranai', ''],['できる', '💪', 'dekiru', 'できます'],['できない', '😣', 'dekinai', 'できません'],['もっと', '➕', 'motto', ''],['おわり', '🏁', 'owari', 'おわりました'],['ちょっとまって', '⏳', 'chottomatte', 'ちょっとまってください'],['いっしょに', '🤝', 'issho', 'いっしょにやりたい']]],
+  ['しごと','🛠️','#e8eaf6','shigoto',[['しつもん', '🙋', 'shitsumon', 'しつもんがあります', 3],['おしえて', '🧑‍🏫', 'oshiete', 'おしえてください', 3],['つぎは？', '➡️', 'tsugi', 'つぎはなにをしますか', 3],['おわりました', '🏁', 'owari', '', 3],['わかりました', '👌', 'wakatta', '', 3],['てつだって', '🤝', 'tetsudatte', 'てつだってください', 3],['しっぱい', '💦', 'shippai', 'しっぱいしました。すみません', 3],['ほうこく', '🗣️', 'houkoku', 'ほうこくします', 3],['きゅうけい', '🍵', 'kyukei', 'きゅうけいします', 3],['タイムカード', '🕘', 'timecard', '', 3],['あぶない', '⚠️', 'abunai', 'あぶないです', 3],['てぶくろ', '🧤', 'tebukuro', '', 3]],3],
+  ['もちもの','🎒','#fff0e0','kaban',[['かばん', '👜', 'kaban', '', 3],['れんらくちょう', '📒', 'renrakucho', '', 3],['ふでばこ', '✏️', 'fudebako', '', 3],['えんぴつ', '✏️', 'enpitsu', '', 3],['けしごむ', '🧽', 'keshigomu', '', 3],['はさみ', '✂️', 'hasami', '', 3],['のり', '🧴', 'nori', '', 3],['すいとう', '🥤', 'suito', '', 3],['タオル', '🧺', 'taoru', '', 3],['うわばき', '👟', 'uwabaki', '', 3],['ぼうし', '👒', 'boushi', '', 3],['おべんとう', '🍱', 'obento', '', 3]],3],
+  ['みのまわり','🧼','#e0f7fa','tearai',[['てをあらう', '🧼', 'tearai', '', 3],['はみがき', '🪥', 'hamigaki', '', 3],['うがい', '💧', 'ugai', '', 3],['かおをあらう', '💦', 'kaoarai', '', 3],['おふろ', '🛁', 'ofuro', '', 3],['ふく', '👕', 'fuku', '', 3],['ズボン', '👖', 'zubon', '', 3],['くつ', '👟', 'kutsu', '', 3],['くつした', '🧦', 'kutsushita', '', 3],['うわぎ', '🧥', 'uwagi', '', 3],['かみをとかす', '💇', 'kushi', '', 3]],3],
+  ['あそび','🧸','#fde4f2','buranko',[['ブランコ', '🎠', 'buranko', '', 3],['すべりだい', '🛝', 'suberidai', '', 3],['つみき', '🧱', 'tsumiki', '', 3],['えほん', '📖', 'ehon', '', 3],['テレビ', '📺', 'terebi', '', 3],['ゲーム', '🎮', 'game', '', 3],['パズル', '🧩', 'puzzle', '', 3],['ダンス', '💃', 'dance', '', 3],['ボール', '⚽', 'ball', '', 3],['けんだま', '🪀', 'kendama', '', 3],['しゃぼんだま', '🫧', 'shabondama', '', 3]],3],
+  ['どうぶつ','🐶','#f1f8e9','inu',[['いぬ', '🐶', 'inu', '', 3],['ねこ', '🐱', 'neko', '', 3],['うさぎ', '🐰', 'usagi', '', 3],['くま', '🐻', 'kuma', '', 3],['パンダ', '🐼', 'panda', '', 3],['ぞう', '🐘', 'zou', '', 3],['ひよこ', '🐤', 'hiyoko', '', 3],['さかな', '🐟', 'sakanaAnimal', '', 3],['かめ', '🐢', 'kame', '', 3],['かえる', '🐸', 'kaeru', '', 3]],3],
+  ['てんき','☀️','#e3f2fd','hare',[['はれ', '☀️', 'hare', '', 3],['くもり', '☁️', 'kumori', '', 3],['あめ', '☔', 'ame', '', 3],['ゆき', '❄️', 'yuki', '', 3],['あつい', '🥵', 'atsui', '', 3],['さむい', '🥶', 'samui', '', 3],['はる', '🌸', 'haru', '', 3],['なつ', '🍉', 'natsu', '', 3],['あき', '🍁', 'aki', '', 3],['ふゆ', '⛄', 'fuyu', '', 3]],3],
+  ['いろ','🎨','#fafafa','aka',[['あか', '🔴', 'aka', '', 3],['あお', '🔵', 'ao', '', 3],['きいろ', '🟡', 'kiiro', '', 3],['みどり', '🟢', 'midori', '', 3],['しろ', '⚪', 'shiro', '', 3],['くろ', '⚫', 'kuro', '', 3],['ピンク', '🩷', 'pinku', '', 3],['オレンジ', '🟠', 'orenji', '', 3],['むらさき', '🟣', 'murasaki', '', 3],['ちゃいろ', '🟤', 'chairo', '', 3]],3],
+  ['かず','🔢','#fff8e1','n3',[['1', '1️⃣', 'n1', 'いち', 3],['2', '2️⃣', 'n2', 'に', 3],['3', '3️⃣', 'n3', 'さん', 3],['4', '4️⃣', 'n4', 'よん', 3],['5', '5️⃣', 'n5', 'ご', 3],['6', '6️⃣', 'n6', 'ろく', 3],['7', '7️⃣', 'n7', 'なな', 3],['8', '8️⃣', 'n8', 'はち', 3],['9', '9️⃣', 'n9', 'きゅう', 3],['10', '🔟', 'n10', 'じゅう', 3],['たくさん', '🔢', 'takusan', '', 3],['すこし', '🤏', 'sukoshi', '', 3]],3],
+];
+/*DEFS-END*/
+function defaultData(){
+  const cats=[], cards=[];
+  DEFS.forEach(([name,emoji,color,sym,list])=>{ const id=uid(); cats.push({id,name,emoji,color,sym});
+    list.forEach(([label,em,sy,speak])=>cards.push({id:uid(),cat:id,label,speak:speak||'',emoji:em,sym:sy||'',img:'',audio:'',color:'',hidden:false})); });
+  return {settings:{...DEF_S}, categories:cats, cards};
+}
+// すぐ答えるボタン
+const QUICK=[{label:'はい',sym:'maru'},{label:'いいえ',sym:'batsu'},{label:'わかりません',sym:'wakaranai'},{label:'もういっかい',sym:'mouikkai',speak:'もういっかい おねがいします'}];
+
+/* ---------- state ---------- */
+let data=null, S={...DEF_S}, T={...DEF_T}, cats=[], log=[];
+const PN={A:{strip:[],cur:null,inbox:null}, B:{strip:[],cur:null,inbox:null}};
+const other=p=>p==='A'?'B':'A';
+const nameOf=p=>T['name'+p]||(p+'さん');
+function loadT(){ try{ T={...DEF_T,...JSON.parse(localStorage.getItem(TKEY)||'{}')}; }catch(e){ T={...DEF_T}; } }
+function saveT(){ try{ localStorage.setItem(TKEY,JSON.stringify(T)); }catch(e){} }
+function toast(msg,ms=2200){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),ms); }
+// 絵：写真 → 日本風の絵 → 絵文字 の順に使う
+function picHTML(o,fb=''){ return o.img?`<img src="${o.img}" alt="">`:(o.sym&&SYM.has(o.sym))?SYM.svg(o.sym):esc(o.emoji||fb); }
+const cardColor=c=>c.color||((data.categories.find(k=>k.id===c.cat)||{}).color)||'#fff';
+const itHTML=c=>`<div class="it" style="--c:${esc(cardColor(c))}"><div class="pic">${picHTML(c)}</div><div class="lbl">${esc(c.label)}</div></div>`;
+
+/* ---------- speech（コミュニケーションカードと同じしくみ。人ごとに声の高さを変える） ---------- */
+let curAudio=null, seqNo=0, unlocked=false, ttsActive=0, ttsWarned=false;
+const SILENT='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+const player=new Audio(); player.setAttribute('playsinline',''); player.preload='auto';
+function unlockAudio(){   // iPad：最初のタッチの中で一度鳴らしておく
+  if(unlocked) return; unlocked=true;
+  try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}
+  try{ player.src=SILENT; player.play().catch(()=>{}); }catch(e){}
+  try{ if('speechSynthesis' in window){ const u=new SpeechSynthesisUtterance(' '); u.volume=0; u.lang='ja-JP'; speechSynthesis.speak(u); } }catch(e){}
+}
+['pointerdown','touchend','keydown'].forEach(ev=>document.addEventListener(ev,unlockAudio,{capture:true,passive:true}));
+document.addEventListener('touchstart',()=>{},{passive:true});
+document.addEventListener('contextmenu',e=>e.preventDefault());
+function jaVoices(){ try{ return speechSynthesis.getVoices().filter(v=>/^ja/i.test(v.lang)); }catch(e){ return []; } }
+function stopAll(){ seqNo++;
+  try{ if(ttsActive>0){ ttsActive=0; speechSynthesis.cancel(); } }catch(e){}   // iOS は cancel 直後の speak を落とすことがあるので、話しているときだけ止める
+  if(curAudio){ try{curAudio.pause();}catch(e){} curAudio=null; } $$('.on').forEach(e=>e.classList.remove('on')); }
+function tts(text,pitch){ return new Promise(res=>{
+  if(!('speechSynthesis' in window)||!text){ res(); return; }
+  const u=new SpeechSynthesisUtterance(text); u.lang='ja-JP'; u.rate=S.rate; u.pitch=pitch;
+  const v=S.voice&&jaVoices().find(v=>v.name===S.voice); if(v) u.voice=v;
+  let done=false; const fin=()=>{ if(!done){ done=true; if(ttsActive>0) ttsActive--; res(); } };
+  let started=false; u.onstart=()=>{ started=true; ttsWarned=false; };
+  u.onend=fin; u.onerror=fin; setTimeout(fin,2000+text.length*450); ttsActive++;
+  setTimeout(()=>{ if(!started&&!done&&!ttsWarned){ ttsWarned=true; toast('声が出ないときは：音量を上げる／消音（マナー）を切る',4500); } },2500);
+  try{ speechSynthesis.resume(); }catch(e){}
+  speechSynthesis.speak(u);
+});}
+function playAudio(src){ return new Promise(res=>{
+  const a=player; curAudio=a; let done=false;
+  const fin=()=>{ if(!done){ done=true; a.onended=a.onerror=null; if(curAudio===a) curAudio=null; res(); } };
+  a.onended=fin; a.onerror=fin; a.src=src; a.currentTime=0; a.play().catch(fin); setTimeout(fin,15000);
+});}
+async function speakItems(items,p,els=[]){
+  stopAll(); const seq=seqNo, pitch=+T['pitch'+p]||1; els.forEach(e=>e&&e.classList.add('on'));
+  let buf=[]; const flush=async()=>{ if(buf.length){ const t=buf.join('　'); buf=[]; await tts(t,pitch); } };
+  for(const it of items){ if(seq!==seqNo) return; if(it.audio){ await flush(); if(seq!==seqNo) return; await playAudio(it.audio); } else buf.push(it.speak||it.label); }
+  await flush();
+  if(seq===seqNo) els.forEach(e=>e&&e.classList.remove('on'));
+}
+
+/* ---------- 画面 ---------- */
+function applyT(){ const b=document.body; b.dataset.layout=T.layout; b.dataset.size=T.size; b.dataset.quick=T.quick?'1':'0'; b.dataset.text=S.showText===false?'0':'1'; $('#gear').style.setProperty('--hold',(S.hold||1.5)+'s'); }
+function build(p){
+  const el=$('#p'+p); el.style.setProperty('--oc',p==='A'?'#c96a00':'#2b6cb0');
+  el.innerHTML=`<div class="inbox" role="button"></div>
+    <div class="mine"><div class="who"></div><div class="strip"></div><button class="say">▶ はなす</button><button class="sq bs" aria-label="1つもどす">⌫</button><button class="sq clr" aria-label="ぜんぶけす">✕</button></div>
+    <div class="quick">${QUICK.map((q,i)=>`<button class="q" data-q="${i}"><span class="pic">${picHTML(q)}</span><span>${esc(q.label)}</span></button>`).join('')}</div>
+    <div class="cats"></div><div class="grid"></div>`;
+}
+function renderInbox(p,fresh){ const el=$('#p'+p+' .inbox'), m=PN[p].inbox;
+  el.innerHTML=m?`<span class="from">${esc(nameOf(other(p)))}</span>`+m.map(itHTML).join(''):`<span class="hint">${esc(nameOf(other(p)))}の ことばが ここに でます</span>`;
+  if(fresh){ el.classList.remove('new'); void el.offsetWidth; el.classList.add('new'); el.scrollLeft=0; } }
+function renderStrip(p){ const el=$('#p'+p+' .strip'), s=PN[p].strip;
+  el.innerHTML=s.length?s.map(itHTML).join(''):'<span class="hint">カードを おして ことばを つくる</span>';
+  el.scrollLeft=el.scrollWidth; $('#p'+p+' .say').disabled=!s.length; }
+function renderCats(p){ const st=PN[p]; if(!cats.some(c=>c.id===st.cur)) st.cur=(cats[0]||{}).id;
+  $('#p'+p+' .cats').innerHTML=cats.map(c=>`<button class="chip${c.id===st.cur?' sel':''}" data-id="${esc(c.id)}" style="--c:${esc(c.color)}"><span class="pic">${picHTML(c)}</span>${esc(c.name)}</button>`).join(''); }
+function renderGrid(p){ const st=PN[p];
+  $('#p'+p+' .grid').innerHTML=data.cards.filter(c=>c.cat===st.cur&&!c.hidden).map(c=>`<button class="card" data-id="${esc(c.id)}" style="--c:${esc(cardColor(c))}"><div class="pic">${picHTML(c,'🔲')}</div><div class="lbl">${esc(c.label)}</div></button>`).join('');
+  $('#p'+p+' .grid').scrollTop=0; }
+function render(p){ $('#p'+p+' .who').textContent=nameOf(p); renderInbox(p); renderStrip(p); renderCats(p); renderGrid(p); }
+function renderAll(){ applyT(); render('A'); render('B'); }
+
+/* ---------- 話す ---------- */
+function send(p,items,el){
+  const o=other(p); PN[o].inbox=items.slice(); renderInbox(o,true);
+  log.push({t:new Date(),p,text:items.map(c=>c.label).join(' ')});
+  speakItems(items,p,[el,$('#p'+o+' .inbox')]);
+}
+['A','B'].forEach(p=>{
+  const root=$('#p'+p), st=PN[p];
+  root.addEventListener('click',e=>{
+    const t=e.target, card=t.closest('.card'), chip=t.closest('.chip'), q=t.closest('.q');
+    if(card){ const c=data.cards.find(x=>x.id===card.dataset.id); if(!c) return; st.strip.push(c); renderStrip(p); if(S.speakOnTap!==false) speakItems([c],p,[card]); return; }
+    if(chip){ st.cur=chip.dataset.id; renderCats(p); renderGrid(p); return; }
+    if(q){ send(p,[QUICK[+q.dataset.q]],q); return; }
+    if(t.closest('.say')){ if(!st.strip.length) return; const items=st.strip; st.strip=[]; renderStrip(p); send(p,items,t.closest('.say')); return; }
+    if(t.closest('.bs')){ st.strip.pop(); renderStrip(p); return; }
+    if(t.closest('.clr')){ st.strip=[]; renderStrip(p); stopAll(); return; }
+    if(t.closest('.inbox')&&st.inbox){ speakItems(st.inbox,other(p),[t.closest('.inbox')]); }   // もう一度きく
+  });
+});
+
+/* ---------- 設定（⚙を長くおす） ---------- */
+const gear=$('#gear'); let holdT=null, held=false;
+const holdEnd=()=>{ clearTimeout(holdT); gear.classList.remove('hold'); };
+gear.addEventListener('pointerdown',()=>{ held=false; gear.classList.add('hold'); holdT=setTimeout(()=>{ held=true; holdEnd(); askPin(); },(S.hold||1.5)*1000); });
+['pointerup','pointerleave','pointercancel'].forEach(ev=>gear.addEventListener(ev,holdEnd));
+gear.addEventListener('click',()=>{ if(!held) toast('設定は ⚙ を長くおします'); });
+function askPin(){ if(!S.pin){ openSet(); return; } const d=$('#dlgPin'); $('#pinIn').value=''; d.returnValue=''; d.showModal();
+  d.onclose=()=>{ if(d.returnValue!=='ok') return; if($('#pinIn').value===String(S.pin)) openSet(); else toast('暗証番号がちがいます'); }; }
+function openSet(){ stopAll();
+  $$('input[name=layout]').forEach(r=>r.checked=r.value===T.layout); $$('input[name=size]').forEach(r=>r.checked=r.value===T.size);
+  $('#nameA').value=T.nameA; $('#nameB').value=T.nameB; $('#pitchA').value=T.pitchA; $('#pitchB').value=T.pitchB; $('#quick').checked=!!T.quick;
+  $('#lnkCards').href=location.protocol==='file:'?'./':'./';
+  $('#dlgSet').showModal(); }
+$('#dlgSet').addEventListener('input',e=>{ const t=e.target;
+  if(t.name==='layout') T.layout=t.value; else if(t.name==='size') T.size=t.value;
+  else if(t.id==='nameA'||t.id==='nameB') T[t.id]=t.value.trim()||DEF_T[t.id];
+  else if(t.id==='pitchA'||t.id==='pitchB') T[t.id]=+t.value; else if(t.id==='quick') T.quick=t.checked;
+  saveT(); applyT(); ['A','B'].forEach(p=>{ $('#p'+p+' .who').textContent=nameOf(p); renderInbox(p); }); });
+$$('[data-test]').forEach(b=>b.onclick=()=>speakItems([{label:nameOf(b.dataset.test)+'です'}],b.dataset.test));
+$('#btnSetClose').onclick=()=>$('#dlgSet').close();
+$('#btnNew').onclick=()=>{ stopAll(); ['A','B'].forEach(p=>{ PN[p].strip=[]; PN[p].inbox=null; PN[p].cur=null; render(p); }); $('#dlgSet').close(); toast('あたらしい会話をはじめます'); };
+const hm=d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+function renderLog(){ $('#logList').innerHTML=log.length?log.map(l=>`<div><time>${hm(l.t)}</time><span class="${l.p==='A'?'a':'b'}">${esc(nameOf(l.p))}</span>：${esc(l.text)}</div>`).join(''):'<span class="note">まだ きろくは ありません</span>'; }
+$('#btnLog').onclick=()=>{ renderLog(); $('#dlgLog').showModal(); const l=$('#logList'); l.scrollTop=l.scrollHeight; };
+$('#btnLogClear').onclick=()=>{ log=[]; renderLog(); };
+$('#btnLogClose').onclick=()=>$('#dlgLog').close();
+
+/* ---------- boot ---------- */
+async function loadData(){
+  const saved=await store.get();
+  data=(saved&&Array.isArray(saved.cards)&&Array.isArray(saved.categories)&&saved.categories.length)?saved:defaultData();
+  S={...DEF_S,...(data.settings||{})};
+  cats=data.categories.filter(k=>data.cards.some(c=>c.cat===k.id&&!c.hidden));
+}
+(async function boot(){
+  loadT(); build('A'); build('B'); await loadData(); renderAll();
+  // カードを直してもどってきたら、新しいカードを読み直す（作りかけのことばはそのまま）
+  document.addEventListener('visibilitychange',async()=>{ if(document.visibilityState!=='visible') return; await loadData();
+    ['A','B'].forEach(p=>{ const fix=a=>a.map(c=>c.id?data.cards.find(x=>x.id===c.id):c).filter(Boolean); PN[p].strip=fix(PN[p].strip); if(PN[p].inbox) PN[p].inbox=fix(PN[p].inbox); }); renderAll(); });
+  if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>
